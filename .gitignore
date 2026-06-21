@@ -1,0 +1,12 @@
+# deps & build
+node_modules
+dist
+src-tauri/target
+
+# tauri génère ça
+src-tauri/gen/schemas
+
+# divers
+.DS_Store
+Thumbs.db
+*.log

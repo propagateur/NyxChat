@@ -1,0 +1,34 @@
+[package]
+name = "nyxchat"
+version = "0.1.0"
+edition = "2021"
+description = "Messagerie P2P chiffrée de bout en bout"
+default-run = "nyxchat"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+futures = "0.3"
+libp2p = { version = "0.54", features = [
+    "tokio",
+    "tcp",
+    "noise",
+    "yamux",
+    "mdns",
+    "request-response",
+    "cbor",
+    "macros",
+    "ed25519",
+] }
+crypto_box = { version = "0.9", features = ["std"] }
+rand = "0.8"
+sha2 = "0.10"
+
+[profile.release]
+strip = true
+lto = true
