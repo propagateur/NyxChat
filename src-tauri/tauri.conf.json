@@ -31,7 +31,10 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": ["vendor/tor/tor/tor.exe"],
+    "resources": {
+      "vendor/tor/tor/tor.exe": "vendor/tor/tor/tor.exe",
+      "vendor/WebView2Loader.dll": "WebView2Loader.dll"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
