@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  connectOnion,
   getIdentity,
   listPeers,
   onFile,
+  onIdentity,
   onMessage,
   onPeers,
   pickFile,
@@ -27,6 +29,7 @@ export default function App() {
     getIdentity().then(setMe).catch(console.error);
     listPeers().then(setPeers).catch(console.error);
 
+    const unIdentity = onIdentity(setMe);
     const unPeers = onPeers(setPeers);
     const unMsg = onMessage((m) => {
       setThreads((t) => append(t, m.peer_id, { text: m.text, ts: m.ts, outgoing: false }));
@@ -43,6 +46,7 @@ export default function App() {
     });
 
     return () => {
+      unIdentity.then((f) => f());
       unPeers.then((f) => f());
       unMsg.then((f) => f());
       unFile.then((f) => f());
@@ -97,6 +101,14 @@ export default function App() {
     }
   }
 
+  async function handleConnectOnion(onion: string) {
+    try {
+      await connectOnion(onion);
+    } catch (e) {
+      alert("Connexion impossible : " + e);
+    }
+  }
+
   function handleCall(video: boolean) {
     if (!active) return;
     startCall(active, video).catch((e) =>
@@ -116,6 +128,7 @@ export default function App() {
         active={active}
         onSelect={setActive}
         onRename={handleRename}
+        onConnectOnion={handleConnectOnion}
       />
       <Chat
         peer={activePeer}

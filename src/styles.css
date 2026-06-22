@@ -139,6 +139,26 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.onion {
+  display: block;
+  margin-top: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+.onion:hover {
+  color: var(--accent-2);
+  text-decoration: underline;
+}
+.onion.pending {
+  color: var(--text-3);
+  cursor: default;
+}
 
 .peers-head {
   padding: 14px 24px 8px;
@@ -257,6 +277,55 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.badge {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  border: 1px solid rgba(230, 180, 80, 0.4);
+  border-radius: 4px;
+  padding: 0 4px;
+  vertical-align: middle;
+}
+
+.add-onion {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.add-onion input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 7px 9px;
+  outline: none;
+}
+.add-onion input:focus {
+  border-color: rgba(230, 180, 80, 0.45);
+}
+.add-onion button {
+  width: 34px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #1c1406;
+  font-size: 16px;
+  font-weight: 700;
+}
+.add-onion button:disabled {
+  background: var(--bg-elev-2);
+  color: var(--text-3);
+  cursor: not-allowed;
 }
 
 .foot {

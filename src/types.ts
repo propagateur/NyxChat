@@ -2,6 +2,7 @@ export interface Identity {
   peer_id: string;
   name: string;
   fingerprint: string;
+  onion: string; // adresse .onion (vide tant que Tor démarre)
 }
 
 export interface Peer {
@@ -9,6 +10,7 @@ export interface Peer {
   name: string | null;
   fingerprint: string | null;
   online: boolean;
+  transport: "lan" | "tor";
 }
 
 // Ce que le backend nous pousse quand un message arrive.

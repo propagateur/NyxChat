@@ -12,6 +12,8 @@ export const sendMessage = (peerId: string, text: string) =>
 export const sendFile = (peerId: string, path: string) =>
   invoke<FileSent>("send_file", { peerId, path });
 export const setName = (name: string) => invoke<void>("set_name", { name });
+// Se connecter à un pair par son adresse .onion (via Tor).
+export const connectOnion = (onion: string) => invoke<void>("connect_onion", { onion });
 
 // Sélecteur de fichier natif. Renvoie le chemin choisi, ou null si annulé.
 export async function pickFile(): Promise<string | null> {
@@ -21,6 +23,10 @@ export async function pickFile(): Promise<string | null> {
 
 export const onPeers = (cb: (peers: Peer[]) => void): Promise<UnlistenFn> =>
   listen<Peer[]>("peers", (e) => cb(e.payload));
+
+// Émis quand Tor a démarré et que l'adresse .onion est disponible.
+export const onIdentity = (cb: (id: Identity) => void): Promise<UnlistenFn> =>
+  listen<Identity>("identity", (e) => cb(e.payload));
 
 export const onMessage = (cb: (msg: IncomingMessage) => void): Promise<UnlistenFn> =>
   listen<IncomingMessage>("message", (e) => cb(e.payload));

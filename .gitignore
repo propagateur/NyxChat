@@ -3,6 +3,9 @@ node_modules
 dist
 src-tauri/target
 
+# binaire Tor embarqué (récupéré via script, non versionné)
+src-tauri/vendor
+
 # tauri génère ça
 src-tauri/gen/schemas
 

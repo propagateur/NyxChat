@@ -27,15 +27,16 @@ use tokio::sync::{mpsc, oneshot};
 use crate::crypto;
 
 const PROTOCOL: &str = "/nyxchat/1.0.0";
-const FILE_CHUNK: usize = 256 * 1024; // 256 KiB par morceau chiffré
+pub(crate) const FILE_CHUNK: usize = 256 * 1024; // 256 KiB par morceau chiffré
 
 // --- Format des messages sur le fil ---------------------------------------
 
 /// On joint la clé publique de l'expéditeur à chaque message : ainsi le
 /// destinataire peut toujours reconstruire la boîte de chiffrement, même s'il a
 /// raté le Hello initial (reconnexion, redémarrage…).
+// Partagé entre le transport libp2p (LAN) et le transport Tor (Internet).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum Wire {
+pub(crate) enum Wire {
     Hello { key: [u8; 32], name: String },
     Msg { key: [u8; 32], nonce: [u8; 24], body: Vec<u8> },
     // Un fichier = un FileMeta puis N FileChunk. Chaque morceau est chiffré
@@ -49,8 +50,21 @@ enum Wire {
     Signal { key: [u8; 32], nonce: [u8; 24], body: Vec<u8> },
 }
 
+impl Wire {
+    /// Clé publique de l'expéditeur, présente dans chaque variante.
+    pub(crate) fn sender_key(&self) -> [u8; 32] {
+        match self {
+            Wire::Hello { key, .. }
+            | Wire::Msg { key, .. }
+            | Wire::FileMeta { key, .. }
+            | Wire::FileChunk { key, .. }
+            | Wire::Signal { key, .. } => *key,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum Ack {
+pub(crate) enum Ack {
     Ok,
     Hello { key: [u8; 32], name: String },
 }
@@ -68,6 +82,7 @@ pub struct Identity {
     pub peer_id: String,
     pub name: String,
     pub fingerprint: String,
+    pub onion: String, // adresse .onion (vide tant que Tor n'a pas démarré)
 }
 
 #[derive(Clone, Serialize)]
@@ -76,6 +91,7 @@ pub struct PeerView {
     pub name: Option<String>,
     pub fingerprint: Option<String>,
     pub online: bool,
+    pub transport: String, // "lan" (libp2p) ou "tor"
 }
 
 #[derive(Clone, Serialize)]
@@ -125,12 +141,57 @@ impl PeerRecord {
 pub struct Shared {
     pub me: Mutex<Identity>,
     peers: Mutex<HashMap<PeerId, PeerRecord>>,
+    // Pairs joints via Tor : on ne connaît pas leur PeerId libp2p, on les
+    // indexe par leur clé publique X25519 (en hexa). Registre séparé pour ne
+    // rien changer au chemin LAN qui fonctionne.
+    tor: Mutex<HashMap<String, PeerRecord>>,
     data_dir: PathBuf,
 }
 
 impl Shared {
     pub fn new(me: Identity, data_dir: PathBuf) -> Self {
-        Shared { me: Mutex::new(me), peers: Mutex::new(HashMap::new()), data_dir }
+        Shared {
+            me: Mutex::new(me),
+            peers: Mutex::new(HashMap::new()),
+            tor: Mutex::new(HashMap::new()),
+            data_dir,
+        }
+    }
+
+    // --- pairs Tor (indexés par hex de la clé X25519) ---
+
+    pub(crate) fn tor_set_key_name(&self, id: String, key: [u8; 32], name: String) {
+        let mut m = self.tor.lock().unwrap();
+        let r = m.entry(id).or_insert_with(PeerRecord::blank);
+        r.key = Some(PublicKey::from(key));
+        r.online = true;
+        if !name.is_empty() {
+            r.name = Some(name);
+        }
+    }
+
+    pub(crate) fn tor_set_key(&self, id: String, key: [u8; 32]) {
+        let mut m = self.tor.lock().unwrap();
+        m.entry(id).or_insert_with(PeerRecord::blank).key = Some(PublicKey::from(key));
+    }
+
+    pub(crate) fn tor_set_online(&self, id: &str, on: bool) {
+        let mut m = self.tor.lock().unwrap();
+        if let Some(r) = m.get_mut(id) {
+            r.online = on;
+        }
+    }
+
+    pub(crate) fn tor_peer_key(&self, id: &str) -> Option<PublicKey> {
+        self.tor.lock().unwrap().get(id).and_then(|r| r.key.clone())
+    }
+
+    pub(crate) fn tor_peer_name(&self, id: &str) -> Option<String> {
+        self.tor.lock().unwrap().get(id).and_then(|r| r.name.clone())
+    }
+
+    pub fn is_tor_peer(&self, id: &str) -> bool {
+        self.tor.lock().unwrap().contains_key(id)
     }
 
     /// On garde le pseudo choisi entre deux lancements.
@@ -170,16 +231,29 @@ impl Shared {
     }
 
     pub fn peer_list(&self) -> Vec<PeerView> {
-        let m = self.peers.lock().unwrap();
-        let mut out: Vec<PeerView> = m
+        let mut out: Vec<PeerView> = self
+            .peers
+            .lock()
+            .unwrap()
             .iter()
             .map(|(p, r)| PeerView {
                 peer_id: p.to_string(),
                 name: r.name.clone(),
                 fingerprint: r.key.as_ref().map(|k| crypto::fingerprint(k.as_bytes())),
                 online: r.online,
+                transport: "lan".to_string(),
             })
             .collect();
+
+        // fusionne les pairs Tor
+        out.extend(self.tor.lock().unwrap().iter().map(|(id, r)| PeerView {
+            peer_id: id.clone(),
+            name: r.name.clone(),
+            fingerprint: r.key.as_ref().map(|k| crypto::fingerprint(k.as_bytes())),
+            online: r.online,
+            transport: "tor".to_string(),
+        }));
+
         // les pairs en ligne d'abord, puis ordre stable par id
         out.sort_by(|a, b| b.online.cmp(&a.online).then(a.peer_id.cmp(&b.peer_id)));
         out
@@ -591,7 +665,7 @@ impl Ctx {
 }
 
 /// Évite d'écraser un fichier existant : `photo.png` → `photo (1).png`, etc.
-fn unique_path(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn unique_path(dir: &Path, name: &str) -> PathBuf {
     let first = dir.join(name);
     if !first.exists() {
         return first;
