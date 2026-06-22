@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ChatMessage, Peer } from "../types";
 import { avatarStyle, formatDay, formatTime, formatSize, initial, isAudio, isImage, sameDay } from "../util";
@@ -13,16 +13,20 @@ interface Props {
   inCall: boolean;
   dragging: boolean;
   showFp: boolean;
+  replyTo: string | null;
+  onCancelReply: () => void;
   onToggleFp: () => void;
   onSend: (text: string) => void;
   onSendFile: () => void;
   onSendVoice: (bytes: number[], ext: string) => void;
   onCall: (video: boolean) => void;
   onVerify: () => void;
+  onOpenImage: (src: string) => void;
+  onMsgMenu: (e: MouseEvent, msg: ChatMessage, index: number) => void;
 }
 
 export default function Chat(props: Props) {
-  const { peer, messages, verified, inCall, dragging, showFp, onToggleFp, onSend, onSendFile, onSendVoice, onCall, onVerify } = props;
+  const { peer, messages, verified, inCall, dragging, showFp, replyTo, onCancelReply, onToggleFp, onSend, onSendFile, onSendVoice, onCall, onVerify, onOpenImage, onMsgMenu } = props;
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,9 +98,12 @@ export default function Chat(props: Props) {
           return (
             <div key={i} style={{ display: "contents" }}>
               {newDay && <div className="day-sep">{formatDay(m.ts)}</div>}
-              <div className={"bubble " + (m.outgoing ? "out" : "in") + (grouped ? " grouped" : "") + (m.failed ? " failed" : "") + (img ? " media" : "")}>
+              <div
+                className={"bubble " + (m.outgoing ? "out" : "in") + (grouped ? " grouped" : "") + (m.failed ? " failed" : "") + (img ? " media" : "")}
+                onContextMenu={(e) => onMsgMenu(e, m, i)}
+              >
                 {img ? (
-                  <img className="msg-img" src={convertFileSrc(m.file!.path!)} alt={m.file!.name} />
+                  <img className="msg-img" src={convertFileSrc(m.file!.path!)} alt={m.file!.name} onClick={() => onOpenImage(convertFileSrc(m.file!.path!))} />
                 ) : audio ? (
                   <audio className="msg-audio" controls src={convertFileSrc(m.file!.path!)} />
                 ) : m.file ? (
@@ -113,7 +120,7 @@ export default function Chat(props: Props) {
                     </span>
                   </span>
                 ) : (
-                  <span className="bubble-text">{renderRich(m.text)}</span>
+                  <span className="bubble-text">{renderBody(m.text)}</span>
                 )}
                 <span className="bubble-meta">
                   {m.failed && <span className="warn">non envoyé · </span>}
@@ -126,6 +133,15 @@ export default function Chat(props: Props) {
         <div ref={endRef} />
       </div>
 
+      {replyTo && (
+        <div className="reply-bar">
+          <span className="reply-quote">Réponse à : {replyTo}</span>
+          <button className="c-btn" onClick={onCancelReply} title="Annuler">
+            ×
+          </button>
+        </div>
+      )}
+
       <Composer
         disabled={!canSend}
         placeholder={canSend ? `Message à ${peer.name ?? "ce pair"}…` : "Échange de clé en cours…"}
@@ -136,5 +152,23 @@ export default function Chat(props: Props) {
 
       {dragging && <div className="drop">Déposez un fichier pour l'envoyer chiffré</div>}
     </main>
+  );
+}
+
+// Rend les lignes de citation (« > … ») comme un bloc, puis le reste en markdown.
+function renderBody(text: string) {
+  const lines = text.split("\n");
+  const quote: string[] = [];
+  let i = 0;
+  while (i < lines.length && lines[i].startsWith("> ")) {
+    quote.push(lines[i].slice(2));
+    i++;
+  }
+  const rest = lines.slice(i).join("\n");
+  return (
+    <>
+      {quote.length > 0 && <span className="quote">{quote.join("\n")}</span>}
+      {rest && renderRich(rest)}
+    </>
   );
 }

@@ -141,6 +141,18 @@ export const Check = ({ size = 18, className }: P) => (
   </svg>
 );
 
+export const Pin = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M9 3h6l-1 5 3 3v2H7v-2l3-3-1-5ZM12 13v8" />
+  </svg>
+);
+
+export const BellOff = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M9 5a3 3 0 0 1 5.7-1.3M17 9.5V12l2 3H8M6.5 6.4A6 6 0 0 0 5 12l-2 3h9M10 18a2 2 0 0 0 4 0M4 3l16 18" />
+  </svg>
+);
+
 export const Lock = ({ size = 18, className }: P) => (
   <svg {...base(size)} className={className}>
     <rect x="5" y="10.5" width="14" height="9.5" rx="2.2" />

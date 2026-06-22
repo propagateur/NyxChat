@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   connectOnion,
@@ -26,6 +26,7 @@ import Network from "./components/Network";
 import SettingsView from "./components/SettingsView";
 import Call from "./components/Call";
 import CommandPalette from "./components/CommandPalette";
+import ContextMenu, { type CtxItem } from "./components/ContextMenu";
 
 function loadThreads(): Record<string, ChatMessage[]> {
   if (!loadBool("nyx.keepHistory", false)) return {};
@@ -56,6 +57,11 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const [showFp, setShowFp] = useState(false);
   const [unread, setUnread] = useState<Record<string, number>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [pinned, setPinned] = useState<Set<string>>(() => loadSet("nyx.pinned"));
+  const [muted, setMuted] = useState<Set<string>>(() => loadSet("nyx.muted"));
 
   const { call, startCall, acceptCall, hangup, toggleMute, toggleCam } = useCall();
 
@@ -63,6 +69,8 @@ export default function App() {
   viewRef.current = view;
   const activeRef = useRef(active);
   activeRef.current = active;
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
 
   useEffect(() => applyAccent(accent), [accent]);
   useEffect(() => applyTheme(theme), [theme]);
@@ -84,14 +92,14 @@ export default function App() {
       const focused = viewRef.current === "messages" && activeRef.current === m.peer_id && !document.hidden;
       if (!focused) {
         bumpUnread(m.peer_id);
-        notify(m.name ?? "Nouveau message", m.text);
+        if (!mutedRef.current.has(m.peer_id)) notify(m.name ?? "Nouveau message", m.text);
       }
     });
     const unFile = onFile((f) => {
       setThreads((t) => append(t, f.peer_id, { text: "", ts: f.ts, outgoing: false, file: { name: f.file_name, size: f.size, path: f.path } }));
       if (!(viewRef.current === "messages" && activeRef.current === f.peer_id)) {
         bumpUnread(f.peer_id);
-        notify(f.from_name ?? "Fichier reçu", f.file_name);
+        if (!mutedRef.current.has(f.peer_id)) notify(f.from_name ?? "Fichier reçu", f.file_name);
       }
     });
 
@@ -151,14 +159,60 @@ export default function App() {
 
   async function handleSend(text: string) {
     if (!active) return;
+    const body = replyTo ? `> ${replyTo}\n${text}` : text;
     const ts = Date.now();
+    setReplyTo(null);
     try {
-      await sendMessage(active, text);
-      setThreads((t) => append(t, active, { text, ts, outgoing: true }));
+      await sendMessage(active, body);
+      setThreads((t) => append(t, active, { text: body, ts, outgoing: true }));
     } catch (e) {
-      setThreads((t) => append(t, active, { text, ts, outgoing: true, failed: true }));
+      setThreads((t) => append(t, active, { text: body, ts, outgoing: true, failed: true }));
       console.error(e);
     }
+  }
+
+  function deleteMessage(peerId: string, index: number) {
+    setThreads((t) => ({ ...t, [peerId]: (t[peerId] ?? []).filter((_, i) => i !== index) }));
+  }
+  function togglePin(id: string) {
+    setPinned((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      saveSet("nyx.pinned", n);
+      return n;
+    });
+  }
+  function toggleMutePeer(id: string) {
+    setMuted((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      saveSet("nyx.muted", n);
+      return n;
+    });
+  }
+  function openMsgMenu(e: MouseEvent, msg: ChatMessage, index: number) {
+    e.preventDefault();
+    if (!active) return;
+    const items: CtxItem[] = [];
+    if (msg.text && !msg.file) {
+      items.push({ label: "Répondre", onClick: () => setReplyTo(msg.text.replace(/^> .*\n/, "").slice(0, 120)) });
+      items.push({ label: "Copier", onClick: () => navigator.clipboard.writeText(msg.text) });
+    }
+    items.push({ label: "Supprimer", danger: true, onClick: () => deleteMessage(active, index) });
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+  function openConvMenu(e: MouseEvent, peerId: string) {
+    e.preventDefault();
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: pinned.has(peerId) ? "Désépingler" : "Épingler", onClick: () => togglePin(peerId) },
+        { label: muted.has(peerId) ? "Réactiver le son" : "Couper le son", onClick: () => toggleMutePeer(peerId) },
+      ],
+    });
   }
 
   async function sendFilePath(peerId: string, path: string) {
@@ -235,7 +289,17 @@ export default function App() {
 
         {view === "messages" && (
           <>
-            <ConversationList peers={peers} threads={threads} active={active} verified={verified} unread={unread} onSelect={selectPeer} />
+            <ConversationList
+              peers={peers}
+              threads={threads}
+              active={active}
+              verified={verified}
+              unread={unread}
+              pinned={pinned}
+              muted={muted}
+              onSelect={selectPeer}
+              onRowMenu={openConvMenu}
+            />
             <Chat
               peer={activePeer}
               messages={active ? threads[active] ?? [] : []}
@@ -243,12 +307,16 @@ export default function App() {
               inCall={call !== null}
               dragging={dragging}
               showFp={showFp}
+              replyTo={replyTo}
+              onCancelReply={() => setReplyTo(null)}
               onToggleFp={() => setShowFp((v) => !v)}
               onSend={handleSend}
               onSendFile={handleSendFile}
               onSendVoice={handleSendVoice}
               onCall={handleCall}
               onVerify={() => active && toggleVerify(active)}
+              onOpenImage={setLightbox}
+              onMsgMenu={openMsgMenu}
             />
           </>
         )}
@@ -276,10 +344,30 @@ export default function App() {
       )}
 
       {cmdOpen && <CommandPalette peers={peers} onClose={() => setCmdOpen(false)} onNavigate={setView} onOpenPeer={selectPeer} />}
+
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" />
+        </div>
+      )}
+
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }
 
 function append(threads: Record<string, ChatMessage[]>, peerId: string, msg: ChatMessage): Record<string, ChatMessage[]> {
   return { ...threads, [peerId]: [...(threads[peerId] ?? []), msg] };
+}
+
+function loadSet(key: string): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(key) ?? "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSet(key: string, s: Set<string>) {
+  localStorage.setItem(key, JSON.stringify([...s]));
 }
