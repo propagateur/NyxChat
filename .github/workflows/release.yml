@@ -1,0 +1,100 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+            tor-script: powershell -ExecutionPolicy Bypass -File scripts/fetch-tor.ps1
+          - os: macos-latest
+            label: macOS
+            tor-script: bash scripts/fetch-tor.sh
+          - os: ubuntu-22.04
+            label: Linux
+            tor-script: bash scripts/fetch-tor.sh
+
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # --- Linux dependencies ---
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # --- Fetch Tor binary ---
+      - name: Fetch Tor Expert Bundle
+        run: ${{ matrix.tor-script }}
+
+      # --- Copy WebView2Loader.dll for Windows ---
+      - name: Prepare WebView2Loader (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dll = "src-tauri/vendor/WebView2Loader.dll"
+          if (-Not (Test-Path $dll)) {
+            Write-Host "WebView2Loader.dll not found in vendor, skipping (webviewInstallMode embedBootstrapper will handle it)"
+          }
+
+      # --- Install & Build ---
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'NyxChat ${{ github.ref_name }}'
+          releaseBody: |
+            ## NyxChat ${{ github.ref_name }}
+
+            Messagerie P2P chiffrée de bout en bout — sans serveur, sans compte.
+
+            ### Téléchargements
+
+            | Plateforme | Fichier |
+            |------------|---------|
+            | 🪟 Windows | `NyxChat_*_x64-setup.exe` |
+            | 🍎 macOS   | `NyxChat_*_x64.dmg` |
+            | 🐧 Linux   | `NyxChat_*_amd64.AppImage` / `.deb` |
+
+            ### Nouveautés
+            - Voir les commits depuis la version précédente pour le détail des changements.
+          releaseDraft: false
+          prerelease: false

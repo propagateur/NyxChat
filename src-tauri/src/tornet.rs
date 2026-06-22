@@ -60,7 +60,7 @@ pub async fn start(
 ) {
     if !tor_exe.exists() {
         eprintln!(
-            "[nyx] tor.exe absent ({}) — Tor désactivé. Lance scripts/fetch-tor.ps1",
+            "[nyx] tor absent ({}) — Tor désactivé. Lance le script fetch-tor approprié",
             tor_exe.display()
         );
         return;

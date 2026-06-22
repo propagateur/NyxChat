@@ -34,4 +34,4 @@ sha2 = "0.10"
 
 [profile.release]
 strip = true
-lto = false # mettre "thin" ou true pour une release finale plus compacte (build plus long)
+lto = "thin"

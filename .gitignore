@@ -13,3 +13,7 @@ src-tauri/gen/schemas
 .DS_Store
 Thumbs.db
 *.log
+
+# installeurs builds locaux
+*.exe
+!src-tauri/**

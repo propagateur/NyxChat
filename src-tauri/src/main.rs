@@ -184,7 +184,11 @@ fn main() {
             let tor_secret = Arc::new(crypto_box::SecretKey::from(secret.to_bytes()));
             // En version installée, tor.exe est une ressource embarquée ; en dev
             // (binaire lancé directement), on retombe sur le dossier vendor.
-            let tor_rel = "vendor/tor/tor/tor.exe";
+            let tor_rel = if cfg!(windows) {
+                "vendor/tor/tor/tor.exe"
+            } else {
+                "vendor/tor/tor/tor"
+            };
             let tor_exe = app
                 .path()
                 .resolve(tor_rel, tauri::path::BaseDirectory::Resource)
