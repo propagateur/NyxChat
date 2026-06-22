@@ -4,7 +4,8 @@ dist
 src-tauri/target
 
 # binaire Tor embarqué (récupéré via script, non versionné)
-src-tauri/vendor
+src-tauri/vendor/*
+!src-tauri/vendor/WebView2Loader.dll
 
 # tauri génère ça
 src-tauri/gen/schemas
