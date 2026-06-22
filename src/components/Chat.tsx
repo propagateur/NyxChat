@@ -1,68 +1,70 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef } from "react";
 import type { ChatMessage, Peer } from "../types";
-import { FileDoc, Moon, Paperclip, Phone, ShieldCheck, Video } from "../icons";
+import { formatDay, formatTime, formatSize, initial, linkify, sameDay } from "../util";
+import { FileDoc, Moon, Phone, ShieldCheck, Video } from "../icons";
+import Composer from "./Composer";
 
 interface Props {
   peer: Peer | null;
   messages: ChatMessage[];
+  verified: boolean;
+  inCall: boolean;
+  dragging: boolean;
+  showFp: boolean;
+  onToggleFp: () => void;
   onSend: (text: string) => void;
   onSendFile: () => void;
   onCall: (video: boolean) => void;
-  inCall: boolean;
+  onVerify: () => void;
 }
 
-export default function Chat({ peer, messages, onSend, onSendFile, onCall, inCall }: Props) {
-  const [text, setText] = useState("");
-  const [showFp, setShowFp] = useState(false);
+export default function Chat(props: Props) {
+  const { peer, messages, verified, inCall, dragging, showFp, onToggleFp, onSend, onSendFile, onCall, onVerify } = props;
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  useEffect(() => setShowFp(false), [peer?.peer_id]);
-
   if (!peer) {
     return (
       <main className="chat empty">
         <div className="welcome">
-          <Moon size={46} className="mark" />
-          <h1>NyxChat</h1>
-          <p>Sélectionne un pair pour démarrer une conversation chiffrée de bout en bout.</p>
+          <Moon size={48} className="mark" />
+          <h2>Choisis une conversation</h2>
+          <p>Sélectionne un pair à gauche, ou ajoute un contact depuis l'Accueil pour démarrer un échange chiffré de bout en bout.</p>
         </div>
       </main>
     );
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const t = text.trim();
-    if (!t) return;
-    onSend(t);
-    setText("");
-  }
-
-  const canSend = peer.fingerprint !== null; // clé échangée = on peut chiffrer
+  const canSend = peer.fingerprint !== null;
   const canCall = canSend && peer.online && !inCall;
 
   return (
     <main className="chat">
       <header className="chat-head">
-        <span className="avatar">{initial(peer.name)}</span>
-        <div className="chat-head-text">
-          <div className="chat-title">{peer.name ?? "Pair inconnu"}</div>
-          <div className={"chat-status" + (peer.online ? " on" : "")}>
+        <span className="avatar tinted">
+          {initial(peer.name)}
+          <span className={"presence" + (peer.online ? " on" : "")} />
+        </span>
+        <div className="row-text">
+          <span className="row-name">
+            {peer.name ?? "Pair inconnu"}
+            {peer.transport === "tor" && <span className="badge tor">tor</span>}
+          </span>
+          <span className={"chat-status" + (peer.online ? " on" : "")}>
             {peer.online ? "en ligne · chiffré" : "hors ligne"}
-          </div>
+          </span>
         </div>
         <div className="head-actions">
-          <button className="icon-btn" onClick={() => onCall(false)} disabled={!canCall} title="Appel audio">
+          <button className="icon-btn" disabled={!canCall} onClick={() => onCall(false)} title="Appel audio">
             <Phone />
           </button>
-          <button className="icon-btn" onClick={() => onCall(true)} disabled={!canCall} title="Appel vidéo">
+          <button className="icon-btn" disabled={!canCall} onClick={() => onCall(true)} title="Appel vidéo">
             <Video />
           </button>
-          <button className="icon-btn" onClick={() => setShowFp((v) => !v)} title="Vérifier l'identité">
+          <button className={"icon-btn" + (verified ? " on" : "")} onClick={onToggleFp} title="Vérifier l'identité">
             <ShieldCheck />
           </button>
         </div>
@@ -71,78 +73,71 @@ export default function Chat({ peer, messages, onSend, onSendFile, onCall, inCal
       {showFp && (
         <div className="fp-panel">
           <p>
-            Comparez cette empreinte avec votre interlocuteur via un canal de confiance
-            (en personne, par téléphone…). Si elle correspond des deux côtés, personne ne
-            peut s'intercaler dans la conversation.
+            Comparez cette empreinte avec votre interlocuteur par un canal sûr (en personne,
+            par téléphone…). Si elle correspond des deux côtés, personne ne peut s'intercaler.
           </p>
           <code>{peer.fingerprint ?? "en attente de la clé…"}</code>
+          <div className="fp-actions">
+            <button className={"btn" + (verified ? " primary" : "")} disabled={!peer.fingerprint} onClick={onVerify}>
+              <ShieldCheck size={15} /> {verified ? "Vérifié" : "Marquer comme vérifié"}
+            </button>
+          </div>
         </div>
       )}
 
       <div className="messages">
-        {messages.length === 0 && <div className="no-msg">Aucun message pour l'instant.</div>}
-        {messages.map((m, i) => (
-          <div key={i} className={"bubble" + (m.outgoing ? " out" : " in") + (m.failed ? " failed" : "")}>
-            {m.file ? (
-              <span className="file-card" title={m.file.path ?? m.file.name}>
-                <span className="file-ic">
-                  <FileDoc size={19} />
-                </span>
-                <span className="file-info">
-                  <span className="file-name">{m.file.name}</span>
-                  <span className="file-sub">
-                    {formatSize(m.file.size)}
-                    {m.outgoing ? " · envoyé" : " · reçu → Téléchargements"}
+        {messages.length === 0 && <div className="no-msg">Aucun message. Dites bonjour.</div>}
+        {messages.map((m, i) => {
+          const prev = messages[i - 1];
+          const newDay = !prev || !sameDay(prev.ts, m.ts);
+          const grouped = !newDay && !!prev && prev.outgoing === m.outgoing && !prev.file && !m.file;
+          return (
+            <div key={i} style={{ display: "contents" }}>
+              {newDay && <div className="day-sep">{formatDay(m.ts)}</div>}
+              <div className={"bubble " + (m.outgoing ? "out" : "in") + (grouped ? " grouped" : "") + (m.failed ? " failed" : "")}>
+                {m.file ? (
+                  <span className="file-card" title={m.file.path ?? m.file.name}>
+                    <span className="file-ic">
+                      <FileDoc size={19} />
+                    </span>
+                    <span>
+                      <span className="file-name" style={{ display: "block" }}>{m.file.name}</span>
+                      <span className="file-sub">
+                        {formatSize(m.file.size)}
+                        {m.outgoing ? " · envoyé" : " · reçu → Téléchargements"}
+                      </span>
+                    </span>
                   </span>
+                ) : (
+                  <span className="bubble-text">
+                    {linkify(m.text).map((s, j) =>
+                      s.url ? (
+                        <span key={j} className="lnk">{s.value}</span>
+                      ) : (
+                        <span key={j}>{s.value}</span>
+                      )
+                    )}
+                  </span>
+                )}
+                <span className="bubble-meta">
+                  {m.failed && <span className="warn">non envoyé · </span>}
+                  {formatTime(m.ts)}
                 </span>
-              </span>
-            ) : (
-              <span className="bubble-text">{m.text}</span>
-            )}
-            <span className="bubble-meta">
-              {m.failed && <span className="warn">non envoyé · </span>}
-              {formatTime(m.ts)}
-            </span>
-          </div>
-        ))}
+              </div>
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
 
-      <form className="composer" onSubmit={submit}>
-        <button
-          type="button"
-          className="attach"
-          onClick={onSendFile}
-          disabled={!canSend}
-          title="Envoyer un fichier chiffré"
-        >
-          <Paperclip />
-        </button>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={canSend ? `Message à ${peer.name ?? "ce pair"}…` : "Échange de clé en cours…"}
-          disabled={!canSend}
-        />
-        <button type="submit" className="send" disabled={!canSend || !text.trim()}>
-          Envoyer
-        </button>
-      </form>
+      <Composer
+        disabled={!canSend}
+        placeholder={canSend ? `Message à ${peer.name ?? "ce pair"}…` : "Échange de clé en cours…"}
+        onSend={onSend}
+        onSendFile={onSendFile}
+      />
+
+      {dragging && <div className="drop">Déposez un fichier pour l'envoyer chiffré</div>}
     </main>
   );
-}
-
-function initial(name?: string | null) {
-  const c = (name ?? "").trim().charAt(0).toUpperCase();
-  return c || "?";
-}
-
-function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }

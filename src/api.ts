@@ -3,6 +3,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import type { FileSent, Identity, IncomingMessage, Peer, ReceivedFile } from "./types";
 
 export const getIdentity = () => invoke<Identity>("get_identity");
@@ -42,3 +47,14 @@ export const onSignal = (
   cb: (msg: { peer_id: string; data: string }) => void
 ): Promise<UnlistenFn> =>
   listen<{ peer_id: string; data: string }>("signal", (e) => cb(e.payload));
+
+// Notification système (si l'utilisateur l'a autorisée).
+export async function notify(title: string, body: string) {
+  try {
+    let granted = await isPermissionGranted();
+    if (!granted) granted = (await requestPermission()) === "granted";
+    if (granted) sendNotification({ title, body });
+  } catch (e) {
+    console.error("notify:", e);
+  }
+}

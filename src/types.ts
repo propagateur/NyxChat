@@ -1,3 +1,6 @@
+export type View = "home" | "messages" | "network" | "settings";
+export type Accent = "lune" | "or" | "iris" | "rose";
+
 export interface Identity {
   peer_id: string;
   name: string;

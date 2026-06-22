@@ -18,18 +18,17 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
   useEffect(() => {
     if (localVid.current) localVid.current.srcObject = call.local;
   }, [call.local]);
-
   useEffect(() => {
     if (remoteVid.current) remoteVid.current.srcObject = call.remote;
   }, [call.remote]);
 
-  const initial = peerName.slice(0, 1).toUpperCase();
+  const ini = peerName.slice(0, 1).toUpperCase();
 
   if (call.status === "incoming") {
     return (
       <div className="call-overlay">
         <div className="call-card">
-          <div className="call-avatar">{initial}</div>
+          <div className="avatar lg tinted call-avatar-ring" style={{ margin: "0 auto" }}>{ini}</div>
           <div className="call-who">{peerName}</div>
           <div className="call-sub">appel {call.video ? "vidéo" : "audio"} entrant…</div>
           <div className="call-actions">
@@ -48,41 +47,25 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
   return (
     <div className="call-overlay">
       <div className="call-stage">
-        {/* Toujours présent : porte aussi l'audio, même en appel audio seul. */}
-        <video
-          ref={remoteVid}
-          className={"call-remote" + (call.video ? "" : " call-hidden")}
-          autoPlay
-          playsInline
-        />
+        <video ref={remoteVid} className={"call-remote" + (call.video ? "" : " call-hidden")} autoPlay playsInline />
 
         {!call.video && (
           <div className="call-card">
-            <div className="call-avatar">{initial}</div>
+            <div className="avatar lg tinted call-avatar-ring" style={{ margin: "0 auto" }}>{ini}</div>
             <div className="call-who">{peerName}</div>
           </div>
         )}
 
         {call.video && <video ref={localVid} className="call-local" autoPlay playsInline muted />}
 
-        <div className="call-status-line">
-          {call.status === "calling" ? "connexion…" : "en communication · chiffré"}
-        </div>
+        <div className="call-status">{call.status === "calling" ? "connexion…" : "en communication · chiffré"}</div>
 
         <div className="call-controls">
-          <button
-            className={"call-btn" + (call.muted ? " active" : "")}
-            onClick={onToggleMute}
-            title={call.muted ? "Réactiver le micro" : "Couper le micro"}
-          >
+          <button className={"call-btn" + (call.muted ? " on" : "")} onClick={onToggleMute} title={call.muted ? "Réactiver le micro" : "Couper le micro"}>
             {call.muted ? <MicOff /> : <Mic />}
           </button>
           {call.video && (
-            <button
-              className={"call-btn" + (call.camOff ? " active" : "")}
-              onClick={onToggleCam}
-              title={call.camOff ? "Activer la caméra" : "Couper la caméra"}
-            >
+            <button className={"call-btn" + (call.camOff ? " on" : "")} onClick={onToggleCam} title={call.camOff ? "Activer la caméra" : "Couper la caméra"}>
               <Video />
             </button>
           )}

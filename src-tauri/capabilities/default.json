@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissions par défaut de NyxChat",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default", "dialog:default", "notification:default"]
 }
