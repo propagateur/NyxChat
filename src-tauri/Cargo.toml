@@ -2,7 +2,8 @@
 name = "nyxchat"
 version = "0.1.1"
 edition = "2021"
-description = "Messagerie P2P chiffrée de bout en bout"
+description = "End-to-end encrypted peer-to-peer messenger"
+license = "MIT"
 default-run = "nyxchat"
 
 [build-dependencies]
