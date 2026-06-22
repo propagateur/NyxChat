@@ -99,7 +99,7 @@ jobs:
             | 🪟 Windows | `NyxChat_*_x64-setup.exe` |
             | 🍎 macOS (Apple Silicon) | `NyxChat_*_aarch64.dmg` |
             | 🍎 macOS (Intel) | `NyxChat_*_x64.dmg` |
-            | 🐧 Linux | `NyxChat_*_amd64.AppImage` / `.deb` |
+            | 🐧 Linux | `NyxChat_*_amd64.deb` / `NyxChat-*.x86_64.rpm` |
 
             ### Changes
             - See the commits since the previous version for the full changelog.

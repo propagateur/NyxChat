@@ -1,5 +1,6 @@
 {
   "bundle": {
+    "targets": ["deb", "rpm"],
     "resources": [
       "vendor/tor/tor/tor"
     ]
