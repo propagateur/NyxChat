@@ -79,11 +79,19 @@ The first native build can take several minutes because the Rust networking stac
 
 ## Release Builds
 
-The GitHub Actions workflow builds Windows, macOS, and Linux artifacts when a version tag is pushed.
+The GitHub Actions workflow builds Windows, a universal macOS (Intel + Apple Silicon) `.dmg`, and Linux (`.deb` / `.rpm`) artifacts when a version tag is pushed.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.3
+git push origin v0.1.3
+```
+
+### macOS first launch
+
+The macOS build is not signed with an Apple Developer ID, so Gatekeeper may report *"NyxChat is damaged and can't be opened"* after download. This is the quarantine flag, not actual corruption. Move NyxChat to Applications and run once:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/NyxChat.app
 ```
 
 ## License

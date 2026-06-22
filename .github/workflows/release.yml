@@ -17,12 +17,18 @@ jobs:
           - os: windows-latest
             label: Windows
             tor-script: powershell -ExecutionPolicy Bypass -File scripts/fetch-tor.ps1
+            rust-targets: ''
+            args: ''
           - os: macos-14
-            label: macOS (Apple Silicon)
-            tor-script: bash scripts/fetch-tor.sh
+            label: macOS (Universal)
+            tor-script: bash scripts/fetch-tor-macos-universal.sh
+            rust-targets: 'x86_64-apple-darwin,aarch64-apple-darwin'
+            args: '--target universal-apple-darwin'
           - os: ubuntu-22.04
             label: Linux
             tor-script: bash scripts/fetch-tor.sh
+            rust-targets: ''
+            args: ''
 
     name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
@@ -33,6 +39,8 @@ jobs:
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -82,6 +90,7 @@ jobs:
           # Run AppImage tooling without FUSE on CI runners (fixes "failed to run linuxdeploy")
           APPIMAGE_EXTRACT_AND_RUN: 1
         with:
+          args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
           releaseName: 'NyxChat ${{ github.ref_name }}'
           releaseBody: |
@@ -94,8 +103,19 @@ jobs:
             | Platform | File |
             |----------|------|
             | 🪟 Windows | `NyxChat_*_x64-setup.exe` / `.msi` |
-            | 🍎 macOS (Apple Silicon) | `NyxChat_*_aarch64.dmg` |
+            | 🍎 macOS (Intel + Apple Silicon) | `NyxChat_*_universal.dmg` |
             | 🐧 Linux | `NyxChat_*_amd64.deb` / `NyxChat-*.x86_64.rpm` |
+
+            ### macOS: first launch
+
+            The app is not signed with an Apple Developer ID, so macOS may say
+            *"NyxChat is damaged and can't be opened"*. This is Gatekeeper
+            quarantine, not a real problem. After moving NyxChat to Applications,
+            run once in Terminal:
+
+            ```bash
+            xattr -dr com.apple.quarantine /Applications/NyxChat.app
+            ```
 
             ### Changes
             - See the commits since the previous version for the full changelog.
