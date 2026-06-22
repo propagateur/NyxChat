@@ -145,7 +145,15 @@ fn main() {
 
             // Le transport Tor a sa propre copie de la clé de chiffrement.
             let tor_secret = Arc::new(crypto_box::SecretKey::from(secret.to_bytes()));
-            let tor_exe = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/vendor/tor/tor/tor.exe"));
+            // En version installée, tor.exe est une ressource embarquée ; en dev
+            // (binaire lancé directement), on retombe sur le dossier vendor.
+            let tor_rel = "vendor/tor/tor/tor.exe";
+            let tor_exe = app
+                .path()
+                .resolve(tor_rel, tauri::path::BaseDirectory::Resource)
+                .ok()
+                .filter(|p| p.exists())
+                .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(tor_rel));
             tauri::async_runtime::spawn(tornet::start(
                 app.handle().clone(),
                 shared.clone(),
