@@ -106,6 +106,7 @@ pub struct IncomingMessage {
 pub struct FileSent {
     pub name: String,
     pub size: u64,
+    pub path: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -481,7 +482,7 @@ impl Ctx {
                 Wire::FileChunk { key: self.my_pub, id, seq: seq as u32, nonce, body },
             );
         }
-        Ok(FileSent { name, size })
+        Ok(FileSent { name, size, path: path.to_string_lossy().to_string() })
     }
 
     fn handle_event(&mut self, swarm: &mut Swarm<Behaviour>, event: SwarmEvent<BehaviourEvent>) {

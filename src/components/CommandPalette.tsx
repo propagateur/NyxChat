@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import type { Peer, View } from "../types";
-import { initial, shortId } from "../util";
+import { avatarStyle, initial, shortId } from "../util";
 import { Globe, Home, Message, Search, Settings } from "../icons";
 
 interface Item {
@@ -37,7 +37,7 @@ export default function CommandPalette({ peers, onClose, onNavigate, onOpenPeer 
       id: "p:" + p.peer_id,
       label: p.name ?? shortId(p.peer_id),
       sub: "Ouvrir la conversation",
-      icon: <span className="avatar tinted" style={{ width: 24, height: 24, borderRadius: 8, fontSize: 11 }}>{initial(p.name)}</span>,
+      icon: <span className="avatar" style={{ ...avatarStyle(p.peer_id), width: 24, height: 24, borderRadius: 8, fontSize: 11 }}>{initial(p.name)}</span>,
       run: () => onOpenPeer(p.peer_id),
     }));
     return [...nav, ...ppl];

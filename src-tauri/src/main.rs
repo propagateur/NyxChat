@@ -69,6 +69,34 @@ async fn send_file(
 }
 
 #[tauri::command]
+async fn send_voice(
+    peer_id: String,
+    bytes: Vec<u8>,
+    ext: String,
+    shared: State<'_, Arc<Shared>>,
+    tx: State<'_, mpsc::Sender<Command>>,
+    tor: State<'_, mpsc::Sender<TorCmd>>,
+) -> Result<FileSent, String> {
+    let safe: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).take(5).collect();
+    let name = format!("message-vocal-{}.{}", rand::random::<u64>(), if safe.is_empty() { "webm".to_string() } else { safe });
+    let path = std::env::temp_dir().join(&name);
+    std::fs::write(&path, &bytes).map_err(|e| format!("écriture impossible : {e}"))?;
+
+    let (reply, rx) = oneshot::channel();
+    if shared.is_tor_peer(&peer_id) {
+        tor.send(TorCmd::SendFile { id: peer_id, path, reply })
+            .await
+            .map_err(|_| "réseau Tor indisponible".to_string())?;
+        return rx.await.map_err(|_| "pas de réponse du réseau".to_string())?;
+    }
+    let peer = peer_id.parse().map_err(|_| "identifiant de pair invalide".to_string())?;
+    tx.send(Command::SendFile { peer, path, reply })
+        .await
+        .map_err(|_| "réseau indisponible".to_string())?;
+    rx.await.map_err(|_| "pas de réponse du réseau".to_string())?
+}
+
+#[tauri::command]
 async fn signal(
     peer_id: String,
     data: String,
@@ -175,6 +203,7 @@ fn main() {
             list_peers,
             send_message,
             send_file,
+            send_voice,
             signal,
             connect_onion,
             set_name

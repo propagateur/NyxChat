@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ChatMessage, Peer } from "../types";
-import { formatDay, formatTime, formatSize, initial, linkify, sameDay } from "../util";
+import { avatarStyle, formatDay, formatTime, formatSize, initial, isAudio, isImage, sameDay } from "../util";
+import { renderRich } from "../richtext";
 import { FileDoc, Moon, Phone, ShieldCheck, Video } from "../icons";
 import Composer from "./Composer";
 
@@ -14,12 +16,13 @@ interface Props {
   onToggleFp: () => void;
   onSend: (text: string) => void;
   onSendFile: () => void;
+  onSendVoice: (bytes: number[], ext: string) => void;
   onCall: (video: boolean) => void;
   onVerify: () => void;
 }
 
 export default function Chat(props: Props) {
-  const { peer, messages, verified, inCall, dragging, showFp, onToggleFp, onSend, onSendFile, onCall, onVerify } = props;
+  const { peer, messages, verified, inCall, dragging, showFp, onToggleFp, onSend, onSendFile, onSendVoice, onCall, onVerify } = props;
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,7 +47,7 @@ export default function Chat(props: Props) {
   return (
     <main className="chat">
       <header className="chat-head">
-        <span className="avatar tinted">
+        <span className="avatar" style={avatarStyle(peer.peer_id)}>
           {initial(peer.name)}
           <span className={"presence" + (peer.online ? " on" : "")} />
         </span>
@@ -53,9 +56,7 @@ export default function Chat(props: Props) {
             {peer.name ?? "Pair inconnu"}
             {peer.transport === "tor" && <span className="badge tor">tor</span>}
           </span>
-          <span className={"chat-status" + (peer.online ? " on" : "")}>
-            {peer.online ? "en ligne · chiffré" : "hors ligne"}
-          </span>
+          <span className={"chat-status" + (peer.online ? " on" : "")}>{peer.online ? "en ligne · chiffré" : "hors ligne"}</span>
         </div>
         <div className="head-actions">
           <button className="icon-btn" disabled={!canCall} onClick={() => onCall(false)} title="Appel audio">
@@ -72,10 +73,7 @@ export default function Chat(props: Props) {
 
       {showFp && (
         <div className="fp-panel">
-          <p>
-            Comparez cette empreinte avec votre interlocuteur par un canal sûr (en personne,
-            par téléphone…). Si elle correspond des deux côtés, personne ne peut s'intercaler.
-          </p>
+          <p>Comparez cette empreinte avec votre interlocuteur par un canal sûr. Si elle correspond des deux côtés, personne ne peut s'intercaler.</p>
           <code>{peer.fingerprint ?? "en attente de la clé…"}</code>
           <div className="fp-actions">
             <button className={"btn" + (verified ? " primary" : "")} disabled={!peer.fingerprint} onClick={onVerify}>
@@ -91,11 +89,17 @@ export default function Chat(props: Props) {
           const prev = messages[i - 1];
           const newDay = !prev || !sameDay(prev.ts, m.ts);
           const grouped = !newDay && !!prev && prev.outgoing === m.outgoing && !prev.file && !m.file;
+          const img = m.file && m.file.path && isImage(m.file.name);
+          const audio = m.file && m.file.path && isAudio(m.file.name);
           return (
             <div key={i} style={{ display: "contents" }}>
               {newDay && <div className="day-sep">{formatDay(m.ts)}</div>}
-              <div className={"bubble " + (m.outgoing ? "out" : "in") + (grouped ? " grouped" : "") + (m.failed ? " failed" : "")}>
-                {m.file ? (
+              <div className={"bubble " + (m.outgoing ? "out" : "in") + (grouped ? " grouped" : "") + (m.failed ? " failed" : "") + (img ? " media" : "")}>
+                {img ? (
+                  <img className="msg-img" src={convertFileSrc(m.file!.path!)} alt={m.file!.name} />
+                ) : audio ? (
+                  <audio className="msg-audio" controls src={convertFileSrc(m.file!.path!)} />
+                ) : m.file ? (
                   <span className="file-card" title={m.file.path ?? m.file.name}>
                     <span className="file-ic">
                       <FileDoc size={19} />
@@ -109,15 +113,7 @@ export default function Chat(props: Props) {
                     </span>
                   </span>
                 ) : (
-                  <span className="bubble-text">
-                    {linkify(m.text).map((s, j) =>
-                      s.url ? (
-                        <span key={j} className="lnk">{s.value}</span>
-                      ) : (
-                        <span key={j}>{s.value}</span>
-                      )
-                    )}
-                  </span>
+                  <span className="bubble-text">{renderRich(m.text)}</span>
                 )}
                 <span className="bubble-meta">
                   {m.failed && <span className="warn">non envoyé · </span>}
@@ -135,6 +131,7 @@ export default function Chat(props: Props) {
         placeholder={canSend ? `Message à ${peer.name ?? "ce pair"}…` : "Échange de clé en cours…"}
         onSend={onSend}
         onSendFile={onSendFile}
+        onSendVoice={onSendVoice}
       />
 
       {dragging && <div className="drop">Déposez un fichier pour l'envoyer chiffré</div>}

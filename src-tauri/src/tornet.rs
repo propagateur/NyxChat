@@ -247,7 +247,7 @@ async fn send_file(peers: &Peers, shared: &Arc<Shared>, secret: &SecretKey, my_p
         let (body, nonce) = crypto::seal(secret, &pk, chunk);
         send_to(peers, id, Frame::Req(Wire::FileChunk { key: my_pub, id: fid, seq: seq as u32, nonce, body })).await;
     }
-    Ok(FileSent { name, size })
+    Ok(FileSent { name, size, path: path.to_string_lossy().to_string() })
 }
 
 // --- Cadrage des trames (longueur u32 big-endian + CBOR) -------------------

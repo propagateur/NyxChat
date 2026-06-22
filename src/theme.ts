@@ -18,3 +18,25 @@ export function applyAccent(a: Accent) {
   else root.setAttribute("data-accent", a);
   localStorage.setItem("nyx.accent", a);
 }
+
+export type Theme = "dark" | "light";
+
+export function loadTheme(): Theme {
+  return localStorage.getItem("nyx.theme") === "light" ? "light" : "dark";
+}
+
+export function applyTheme(t: Theme) {
+  const root = document.documentElement;
+  if (t === "light") root.setAttribute("data-theme", "light");
+  else root.removeAttribute("data-theme");
+  localStorage.setItem("nyx.theme", t);
+}
+
+export function loadBool(key: string, def = false): boolean {
+  const v = localStorage.getItem(key);
+  return v === null ? def : v === "1";
+}
+
+export function saveBool(key: string, val: boolean) {
+  localStorage.setItem(key, val ? "1" : "0");
+}

@@ -5,10 +5,10 @@ import { Globe, Home, Message, Moon, Settings } from "../icons";
 interface Props {
   view: View;
   onView: (v: View) => void;
-  hasUnread: boolean;
+  unreadCount: number;
 }
 
-export default function Rail({ view, onView, hasUnread }: Props) {
+export default function Rail({ view, onView, unreadCount }: Props) {
   const items: { id: View; icon: ReactNode; label: string }[] = [
     { id: "home", icon: <Home />, label: "Accueil" },
     { id: "messages", icon: <Message />, label: "Messages" },
@@ -28,7 +28,9 @@ export default function Rail({ view, onView, hasUnread }: Props) {
           title={it.label}
         >
           {it.icon}
-          {it.id === "messages" && hasUnread && <span className="dot-badge" />}
+          {it.id === "messages" && unreadCount > 0 && (
+            <span className="count-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+          )}
         </button>
       ))}
       <div className="rail-spacer" />

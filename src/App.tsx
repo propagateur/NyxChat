@@ -12,10 +12,11 @@ import {
   pickFile,
   sendFile,
   sendMessage,
+  sendVoice,
   setName,
 } from "./api";
 import type { Accent, ChatMessage, Identity, Peer, View } from "./types";
-import { applyAccent, loadAccent } from "./theme";
+import { applyAccent, applyTheme, loadAccent, loadBool, loadTheme, saveBool, type Theme } from "./theme";
 import { useCall } from "./useCall";
 import Rail from "./components/Rail";
 import Home from "./components/Home";
@@ -26,10 +27,19 @@ import SettingsView from "./components/SettingsView";
 import Call from "./components/Call";
 import CommandPalette from "./components/CommandPalette";
 
+function loadThreads(): Record<string, ChatMessage[]> {
+  if (!loadBool("nyx.keepHistory", false)) return {};
+  try {
+    return JSON.parse(localStorage.getItem("nyx.threads") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
   const [me, setMe] = useState<Identity | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
-  const [threads, setThreads] = useState<Record<string, ChatMessage[]>>({});
+  const [threads, setThreads] = useState<Record<string, ChatMessage[]>>(loadThreads);
   const [active, setActive] = useState<string | null>(null);
   const [view, setView] = useState<View>("home");
   const [verified, setVerified] = useState<Record<string, boolean>>(() => {
@@ -40,20 +50,28 @@ export default function App() {
     }
   });
   const [accent, setAccent] = useState<Accent>(loadAccent());
+  const [theme, setTheme] = useState<Theme>(loadTheme());
+  const [keepHistory, setKeepHistory] = useState(loadBool("nyx.keepHistory", false));
   const [cmdOpen, setCmdOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [showFp, setShowFp] = useState(false);
-  const [unread, setUnread] = useState<Set<string>>(new Set());
+  const [unread, setUnread] = useState<Record<string, number>>({});
 
   const { call, startCall, acceptCall, hangup, toggleMute, toggleCam } = useCall();
 
-  // refs pour les closures d'events (créées une seule fois)
   const viewRef = useRef(view);
   viewRef.current = view;
   const activeRef = useRef(active);
   activeRef.current = active;
 
   useEffect(() => applyAccent(accent), [accent]);
+  useEffect(() => applyTheme(theme), [theme]);
+
+  // Persistance optionnelle de l'historique.
+  useEffect(() => {
+    if (keepHistory) localStorage.setItem("nyx.threads", JSON.stringify(threads));
+    else localStorage.removeItem("nyx.threads");
+  }, [threads, keepHistory]);
 
   useEffect(() => {
     getIdentity().then(setMe).catch(console.error);
@@ -65,16 +83,14 @@ export default function App() {
       setThreads((t) => append(t, m.peer_id, { text: m.text, ts: m.ts, outgoing: false }));
       const focused = viewRef.current === "messages" && activeRef.current === m.peer_id && !document.hidden;
       if (!focused) {
-        setUnread((s) => new Set(s).add(m.peer_id));
+        bumpUnread(m.peer_id);
         notify(m.name ?? "Nouveau message", m.text);
       }
     });
     const unFile = onFile((f) => {
-      setThreads((t) =>
-        append(t, f.peer_id, { text: "", ts: f.ts, outgoing: false, file: { name: f.file_name, size: f.size, path: f.path } })
-      );
+      setThreads((t) => append(t, f.peer_id, { text: "", ts: f.ts, outgoing: false, file: { name: f.file_name, size: f.size, path: f.path } }));
       if (!(viewRef.current === "messages" && activeRef.current === f.peer_id)) {
-        setUnread((s) => new Set(s).add(f.peer_id));
+        bumpUnread(f.peer_id);
         notify(f.from_name ?? "Fichier reçu", f.file_name);
       }
     });
@@ -87,7 +103,6 @@ export default function App() {
     };
   }, []);
 
-  // Palette de commandes (Ctrl/Cmd-K)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -99,7 +114,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Glisser-déposer de fichiers (event natif Tauri → vrais chemins)
   useEffect(() => {
     const un = getCurrentWebview().onDragDropEvent((e) => {
       const p = e.payload as { type: string; paths?: string[] };
@@ -108,9 +122,7 @@ export default function App() {
       else if (p.type === "drop") {
         setDragging(false);
         const peer = activeRef.current;
-        if (peer && p.paths) {
-          for (const path of p.paths) void sendFilePath(peer, path);
-        }
+        if (peer && p.paths) for (const path of p.paths) void sendFilePath(peer, path);
       }
     });
     return () => {
@@ -125,15 +137,16 @@ export default function App() {
   useEffect(() => setShowFp(false), [active]);
 
   const activePeer = useMemo(() => peers.find((p) => p.peer_id === active) ?? null, [peers, active]);
+  const totalUnread = useMemo(() => Object.values(unread).reduce((a, b) => a + b, 0), [unread]);
+
+  function bumpUnread(id: string) {
+    setUnread((u) => ({ ...u, [id]: (u[id] ?? 0) + 1 }));
+  }
 
   function selectPeer(id: string) {
     setActive(id);
     setView("messages");
-    setUnread((s) => {
-      const n = new Set(s);
-      n.delete(id);
-      return n;
-    });
+    setUnread((u) => ({ ...u, [id]: 0 }));
   }
 
   async function handleSend(text: string) {
@@ -163,6 +176,17 @@ export default function App() {
     if (!active) return;
     const path = await pickFile();
     if (path) sendFilePath(active, path);
+  }
+
+  async function handleSendVoice(bytes: number[], ext: string) {
+    if (!active) return;
+    const ts = Date.now();
+    try {
+      const info = await sendVoice(active, bytes, ext);
+      setThreads((t) => append(t, active, { text: "", ts, outgoing: true, file: { name: "Message vocal", size: info.size, path: info.path } }));
+    } catch (e) {
+      console.error("voice:", e);
+    }
   }
 
   async function handleRename(name: string) {
@@ -195,18 +219,23 @@ export default function App() {
     });
   }
 
+  function changeKeepHistory(v: boolean) {
+    setKeepHistory(v);
+    saveBool("nyx.keepHistory", v);
+  }
+
   const callPeerName = call ? peers.find((p) => p.peer_id === call.peerId)?.name ?? "Pair inconnu" : "";
 
   return (
     <div className="app">
-      <Rail view={view} onView={setView} hasUnread={unread.size > 0} />
+      <Rail view={view} onView={setView} unreadCount={totalUnread} />
 
       <div className="surface">
         {view === "home" && <Home me={me} peers={peers} onConnectOnion={handleConnectOnion} />}
 
         {view === "messages" && (
           <>
-            <ConversationList peers={peers} threads={threads} active={active} verified={verified} onSelect={selectPeer} />
+            <ConversationList peers={peers} threads={threads} active={active} verified={verified} unread={unread} onSelect={selectPeer} />
             <Chat
               peer={activePeer}
               messages={active ? threads[active] ?? [] : []}
@@ -217,6 +246,7 @@ export default function App() {
               onToggleFp={() => setShowFp((v) => !v)}
               onSend={handleSend}
               onSendFile={handleSendFile}
+              onSendVoice={handleSendVoice}
               onCall={handleCall}
               onVerify={() => active && toggleVerify(active)}
             />
@@ -224,39 +254,28 @@ export default function App() {
         )}
 
         {view === "network" && (
-          <Network
-            peers={peers}
-            verified={verified}
-            onConnectOnion={handleConnectOnion}
-            onVerify={toggleVerify}
-            onOpenChat={selectPeer}
-          />
+          <Network peers={peers} verified={verified} onConnectOnion={handleConnectOnion} onVerify={toggleVerify} onOpenChat={selectPeer} />
         )}
 
         {view === "settings" && (
-          <SettingsView me={me} accent={accent} onRename={handleRename} onAccent={setAccent} />
+          <SettingsView
+            me={me}
+            accent={accent}
+            theme={theme}
+            keepHistory={keepHistory}
+            onRename={handleRename}
+            onAccent={setAccent}
+            onTheme={setTheme}
+            onKeepHistory={changeKeepHistory}
+          />
         )}
       </div>
 
       {call && (
-        <Call
-          call={call}
-          peerName={callPeerName}
-          onAccept={acceptCall}
-          onHangup={hangup}
-          onToggleMute={toggleMute}
-          onToggleCam={toggleCam}
-        />
+        <Call call={call} peerName={callPeerName} onAccept={acceptCall} onHangup={hangup} onToggleMute={toggleMute} onToggleCam={toggleCam} />
       )}
 
-      {cmdOpen && (
-        <CommandPalette
-          peers={peers}
-          onClose={() => setCmdOpen(false)}
-          onNavigate={setView}
-          onOpenPeer={selectPeer}
-        />
-      )}
+      {cmdOpen && <CommandPalette peers={peers} onClose={() => setCmdOpen(false)} onNavigate={setView} onOpenPeer={selectPeer} />}
     </div>
   );
 }

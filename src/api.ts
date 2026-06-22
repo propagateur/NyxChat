@@ -16,6 +16,8 @@ export const sendMessage = (peerId: string, text: string) =>
   invoke<void>("send_message", { peerId, text });
 export const sendFile = (peerId: string, path: string) =>
   invoke<FileSent>("send_file", { peerId, path });
+export const sendVoice = (peerId: string, bytes: number[], ext: string) =>
+  invoke<FileSent>("send_voice", { peerId, bytes, ext });
 export const setName = (name: string) => invoke<void>("set_name", { name });
 // Se connecter à un pair par son adresse .onion (via Tor).
 export const connectOnion = (onion: string) => invoke<void>("connect_onion", { onion });

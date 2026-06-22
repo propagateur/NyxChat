@@ -3,6 +3,23 @@ export function initial(name?: string | null) {
   return c || "?";
 }
 
+// Couleur d'avatar déterministe à partir d'un identifiant (teinte stable).
+export function avatarStyle(id: string): { background: string } {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return { background: `linear-gradient(150deg, hsl(${h} 55% 42%), hsl(${(h + 40) % 360} 55% 28%))` };
+}
+
+const IMG = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg"];
+const AUDIO = ["webm", "ogg", "oga", "mp3", "m4a", "wav", "opus"];
+
+function ext(name: string) {
+  const i = name.lastIndexOf(".");
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
+}
+export const isImage = (name: string) => IMG.includes(ext(name));
+export const isAudio = (name: string) => AUDIO.includes(ext(name));
+
 export function shortId(id: string) {
   return id.length > 14 ? `${id.slice(0, 7)}…${id.slice(-4)}` : id;
 }

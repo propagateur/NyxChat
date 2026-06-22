@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { CallState } from "../useCall";
+import { avatarStyle } from "../util";
 import { Mic, MicOff, Phone, PhoneDown, Video } from "../icons";
 
 interface Props {
@@ -28,7 +29,7 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
     return (
       <div className="call-overlay">
         <div className="call-card">
-          <div className="avatar lg tinted call-avatar-ring" style={{ margin: "0 auto" }}>{ini}</div>
+          <div className="avatar lg call-avatar-ring" style={{ margin: "0 auto", ...avatarStyle(call.peerId) }}>{ini}</div>
           <div className="call-who">{peerName}</div>
           <div className="call-sub">appel {call.video ? "vidéo" : "audio"} entrant…</div>
           <div className="call-actions">
@@ -51,7 +52,7 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
 
         {!call.video && (
           <div className="call-card">
-            <div className="avatar lg tinted call-avatar-ring" style={{ margin: "0 auto" }}>{ini}</div>
+            <div className="avatar lg call-avatar-ring" style={{ margin: "0 auto", ...avatarStyle(call.peerId) }}>{ini}</div>
             <div className="call-who">{peerName}</div>
           </div>
         )}

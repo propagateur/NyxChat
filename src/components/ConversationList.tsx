@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChatMessage, Peer } from "../types";
-import { initial, shortId } from "../util";
+import { avatarStyle, initial, shortId } from "../util";
 import { Check, Search } from "../icons";
 
 interface Props {
@@ -8,10 +8,11 @@ interface Props {
   threads: Record<string, ChatMessage[]>;
   active: string | null;
   verified: Record<string, boolean>;
+  unread: Record<string, number>;
   onSelect: (peerId: string) => void;
 }
 
-export default function ConversationList({ peers, threads, active, verified, onSelect }: Props) {
+export default function ConversationList({ peers, threads, active, verified, unread, onSelect }: Props) {
   const [q, setQ] = useState("");
 
   const filtered = peers.filter((p) => {
@@ -49,7 +50,7 @@ export default function ConversationList({ peers, threads, active, verified, onS
             className={"row" + (p.peer_id === active ? " active" : "")}
             onClick={() => onSelect(p.peer_id)}
           >
-            <span className="avatar tinted">
+            <span className="avatar" style={avatarStyle(p.peer_id)}>
               {initial(p.name)}
               <span className={"presence" + (p.online ? " on" : "")} />
             </span>
@@ -61,6 +62,7 @@ export default function ConversationList({ peers, threads, active, verified, onS
               </span>
               <span className="row-sub">{preview(p.peer_id)}</span>
             </span>
+            {unread[p.peer_id] > 0 && <span className="unread">{unread[p.peer_id]}</span>}
           </button>
         ))}
       </div>

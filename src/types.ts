@@ -28,6 +28,7 @@ export interface IncomingMessage {
 export interface FileSent {
   name: string;
   size: number;
+  path: string;
 }
 
 // Event "file" : un fichier reçu et enregistré sur le disque.

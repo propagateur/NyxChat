@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { Peer } from "../types";
-import { initial, shortId } from "../util";
+import { avatarStyle, initial, shortId } from "../util";
 import { Check, Message, Plus, ShieldCheck } from "../icons";
 
 interface Props {
@@ -50,7 +50,7 @@ export default function Network({ peers, verified, onConnectOnion, onVerify, onO
           {peers.map((p) => (
             <section className="card" key={p.peer_id} style={{ padding: 16 }}>
               <div className="row" style={{ padding: 0 }}>
-                <span className="avatar tinted">
+                <span className="avatar" style={avatarStyle(p.peer_id)}>
                   {initial(p.name)}
                   <span className={"presence" + (p.online ? " on" : "")} />
                 </span>
