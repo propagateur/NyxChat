@@ -2,6 +2,7 @@ import { useState, type MouseEvent } from "react";
 import type { ChatMessage, Peer } from "../types";
 import { avatarStyle, initial, shortId } from "../util";
 import { BellOff, Check, Pin, Search } from "../icons";
+import { useTranslation } from "../i18n";
 
 interface Props {
   peers: Peer[];
@@ -17,6 +18,7 @@ interface Props {
 
 export default function ConversationList({ peers, threads, active, verified, unread, pinned, muted, onSelect, onRowMenu }: Props) {
   const [q, setQ] = useState("");
+  const { t } = useTranslation();
 
   const filtered = peers
     .filter((p) => `${p.name ?? ""} ${p.peer_id}`.toLowerCase().includes(q.toLowerCase()))
@@ -25,25 +27,24 @@ export default function ConversationList({ peers, threads, active, verified, unr
   function preview(peerId: string): string {
     const arr = threads[peerId];
     const last = arr && arr.length ? arr[arr.length - 1] : undefined;
-    if (!last) return "—";
-    if (last.file) return `${last.outgoing ? "Envoyé" : "Reçu"} · ${last.file.name}`;
-    return (last.outgoing ? "Vous : " : "") + last.text;
+    if (!last) return "-";
+    if (last.file) return `${last.outgoing ? t("list.sent") : t("list.received")} · ${last.file.name}`;
+    return (last.outgoing ? t("list.you") : "") + last.text;
   }
 
   return (
     <div className="col-list">
       <div className="list-head">
-        <h2>Messages</h2>
+        <h2>{t("view.messages")}</h2>
         <div className="search">
           <Search size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un pair…" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("list.search")} />
         </div>
       </div>
       <div className="list-scroll">
         {filtered.length === 0 && (
           <div className="list-empty">
-            Aucun pair pour l'instant. Va dans <b>Réseau</b> ou <b>Accueil</b> pour ajouter un
-            contact par son adresse .onion.
+            {t("list.empty")}
           </div>
         )}
         {filtered.map((p) => (

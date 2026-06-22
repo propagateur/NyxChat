@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import type { Peer, View } from "../types";
 import { avatarStyle, initial, shortId } from "../util";
 import { Globe, Home, Message, Search, Settings } from "../icons";
+import { useTranslation } from "../i18n";
 
 interface Item {
   id: string;
@@ -23,25 +24,26 @@ export default function CommandPalette({ peers, onClose, onNavigate, onOpenPeer 
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => inputRef.current?.focus(), []);
 
   const items = useMemo<Item[]>(() => {
     const nav: Item[] = [
-      { id: "home", label: "Accueil", icon: <Home size={16} />, run: () => onNavigate("home") },
-      { id: "messages", label: "Messages", icon: <Message size={16} />, run: () => onNavigate("messages") },
-      { id: "network", label: "Réseau", icon: <Globe size={16} />, run: () => onNavigate("network") },
-      { id: "settings", label: "Réglages", icon: <Settings size={16} />, run: () => onNavigate("settings") },
+      { id: "home", label: t("view.home"), icon: <Home size={16} />, run: () => onNavigate("home") },
+      { id: "messages", label: t("view.messages"), icon: <Message size={16} />, run: () => onNavigate("messages") },
+      { id: "network", label: t("view.network"), icon: <Globe size={16} />, run: () => onNavigate("network") },
+      { id: "settings", label: t("view.settings"), icon: <Settings size={16} />, run: () => onNavigate("settings") },
     ];
     const ppl: Item[] = peers.map((p) => ({
       id: "p:" + p.peer_id,
       label: p.name ?? shortId(p.peer_id),
-      sub: "Ouvrir la conversation",
+      sub: t("cmd.peerSub"),
       icon: <span className="avatar" style={{ ...avatarStyle(p.peer_id), width: 24, height: 24, borderRadius: 8, fontSize: 11 }}>{initial(p.name)}</span>,
       run: () => onOpenPeer(p.peer_id),
     }));
     return [...nav, ...ppl];
-  }, [peers, onNavigate, onOpenPeer]);
+  }, [peers, onNavigate, onOpenPeer, t]);
 
   const filtered = items.filter((it) => (it.label + " " + (it.sub ?? "")).toLowerCase().includes(q.toLowerCase()));
 
@@ -74,11 +76,11 @@ export default function CommandPalette({ peers, onClose, onNavigate, onOpenPeer 
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Aller à… ou rechercher un pair"
+            placeholder={t("cmd.placeholder")}
           />
         </div>
         <div className="cmd-list">
-          {filtered.length === 0 && <div className="cmd-empty">Aucun résultat</div>}
+          {filtered.length === 0 && <div className="cmd-empty">{t("cmd.empty")}</div>}
           {filtered.map((it, i) => (
             <button
               key={it.id}

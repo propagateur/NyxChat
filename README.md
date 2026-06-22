@@ -1,111 +1,91 @@
 # NyxChat
 
-**Messagerie pair-à-pair, chiffrée de bout en bout — application de bureau.**
+**NyxChat is a desktop peer-to-peer messenger with end-to-end encryption, local discovery, and Tor onion reachability.**
 
-NyxChat est une messagerie sans serveur central et sans compte : ton identité
-n'est qu'une paire de clés sur ta machine. Sur un même réseau local les pairs se
-découvrent tout seuls ; à distance, on s'ajoute par une adresse **`.onion`** et
-tout passe par **Tor**. Ni un attaquant sur le réseau, ni une quelconque
-infrastructure, ne peuvent lire ce qui transite.
+NyxChat does not rely on a central account server. Each device owns its local identity, peers can discover each other on the same network, and remote contacts can connect through shared `.onion` addresses. Messages and files are encrypted before they leave the device.
 
-Construit avec **Tauri** pour rester léger et natif sur le bureau.
+Built with Tauri, Rust, React, TypeScript, libp2p, Tor, and WebRTC.
 
----
+## Features
 
-## Fonctionnalités
+- End-to-end encrypted messages with X25519 and XSalsa20-Poly1305
+- Automatic local peer discovery with mDNS and libp2p
+- Remote reachability through Tor onion services
+- QR-based address sharing
+- Encrypted file transfer with image previews
+- Voice messages
+- Audio and video calls with encrypted signaling
+- Fingerprint-based identity verification
+- Light and dark themes with accent colors
+- English and French interface
+- Command palette, emoji picker, drag and drop, and lightweight Markdown
+- Pinned, muted, and verified conversations
+- System tray support
+- No conversation history written to disk by default
 
--  Chiffrement de bout en bout (X25519 + XSalsa20-Poly1305)
--  Découverte automatique des pairs sur le réseau local (mDNS, libp2p)
--  Joignable depuis n'importe où via **services onion Tor** (ajout par `.onion`, QR)
--  Transfert de fichiers chiffré (avec aperçu d'images)
--  Messages vocaux
--  Appels audio et vidéo (WebRTC, signalisation chiffrée, STUN)
--  Vérification d'identité par empreinte de clé (« safety number »)
--  Thèmes clair/sombre + couleurs d'accent
--  Palette de commandes (Ctrl-K), emoji, glisser-déposer, markdown léger
--  Épingler / couper le son des conversations, contacts vérifiés
--  Icône dans la zone de notification (reste joignable en arrière-plan)
--  Aucun historique écrit sur le disque par défaut
+## How It Works
 
----
+NyxChat uses a Rust backend for networking and cryptography, exposed to the React interface through Tauri commands and events.
 
-## Comment ça marche
-
-```
-┌──────────────── Tauri (Rust) ────────────────┐      ┌─────────── React / TS ───────────┐
-│  net.rs    swarm libp2p (mDNS, Noise, yamux)  │ IPC  │  Rail · Accueil · Messages        │
-│  tornet.rs transport Tor (services onion)     │◄────►│  Réseau · Réglages · Appel        │
-│  crypto.rs X25519 + XSalsa20-Poly1305         │event │  (api.ts : invoke / listen)       │
-└────────────────────────────────────────────────┘      └───────────────────────────────────┘
+```text
+Rust / Tauri backend                 React / TypeScript interface
+net.rs      libp2p swarm             Home, Messages, Network, Settings
+tornet.rs   Tor onion transport      Chat, calls, QR, command palette
+crypto.rs   content encryption       api.ts invoke/listen bridge
 ```
 
-Chaque pair possède **deux clés** : une identité **ed25519** (le `PeerId` libp2p,
-pour le transport) et une paire **X25519** qui chiffre réellement le contenu.
-À la rencontre, les pairs s'échangent leur clé publique X25519 (message `Hello`) ;
-ensuite chaque message est scellé avec `crypto_box` et n'est lisible que par le
-destinataire. Les fichiers suivent le même chemin, découpés en morceaux de 256 Ko
-chacun chiffré séparément.
+Each peer has a libp2p identity for transport and an X25519 key pair for message encryption. After peers exchange public encryption keys, every message is sealed for its recipient. File transfers use the same encrypted channel and are split into encrypted chunks.
 
-Les **appels** utilisent le moteur WebRTC du webview : le flux audio/vidéo va en
-direct entre les deux pairs, seule la signalisation (SDP/ICE) passe par le canal
-chiffré. Aucun serveur de signalisation.
+Calls use the WebRTC engine provided by the webview. Audio and video media flow directly between peers when possible, while SDP and ICE signaling travel through the encrypted messaging channel.
 
-L'**empreinte** affichée près de chaque pair est un SHA-256 de sa clé publique :
-la comparer de visu écarte toute attaque de l'homme du milieu.
+The fingerprint displayed for each peer is derived from the public encryption key. Comparing it through a trusted side channel helps confirm that both sides are talking to the expected device.
 
----
+## Network Modes
 
-## Portée réseau
+- **Local network:** peers discover each other automatically with mDNS and connect directly.
+- **Internet:** peers exchange `.onion` addresses and connect through Tor onion services without opening ports.
+- **Calls:** WebRTC calls are designed for local networks and common NAT traversal through STUN. Media does not travel through Tor.
 
-- **Réseau local** : découverte automatique (mDNS), connexion directe.
-- **Internet** : services onion Tor — tu partages ton adresse `.onion`, ton
-  correspondant colle la sienne, et vous discutez où que vous soyez, sans ouvrir
-  de port ni dépendre d'un serveur. Le réseau Tor fait office d'infrastructure
-  partagée (et ne voit pas le contenu chiffré).
-- **Appels** : conçus pour le réseau local + STUN pour traverser la plupart des
-  box domestiques (le média WebRTC/UDP ne transite pas par Tor).
+## Security Notes
 
----
+NyxChat uses established cryptographic primitives, but it has not received a formal third-party security audit. Treat it as an experimental private messenger, not as a tool for protecting high-risk secrets.
 
-## Sécurité
+## Development
 
-Le chiffrement repose sur des primitives éprouvées (les mêmes que
-NaCl/libsodium). Ce projet **n'a pas fait l'objet d'un audit de sécurité
-formel** — à utiliser pour apprendre et expérimenter, pas pour protéger des
-secrets critiques.
+Requirements:
 
----
-
-## Développement
-
-Prérequis : **Rust** (stable, https://rustup.rs) et **Node.js** 18+.
+- Node.js 18 or newer
+- Rust stable
+- Windows, macOS, or Linux with the native dependencies required by Tauri
 
 ```bash
-# 1. récupérer le binaire Tor embarqué (Windows)
-powershell -ExecutionPolicy Bypass -File scripts/fetch-tor.ps1
-
-# 2. installer les dépendances front
+# Install frontend dependencies
 npm install
 
-# 3. lancer en développement
+# Fetch the embedded Tor bundle on Windows
+powershell -ExecutionPolicy Bypass -File scripts/fetch-tor.ps1
+
+# Run the desktop app in development
 npm run tauri dev
 
-# 4. construire un installeur natif
+# Build the frontend
+npm run build
+
+# Build native installers
 npm run tauri build
 ```
 
-Le premier build compile toute la pile libp2p/Tauri : comptez quelques minutes.
-Pour tester le P2P, lancez NyxChat sur **deux machines** (même réseau local, ou
-échange d'adresses `.onion` à distance).
+The first native build can take several minutes because the Rust networking stack is compiled locally. To test peer-to-peer behavior, run NyxChat on two devices on the same local network or exchange onion addresses between remote devices.
 
----
+## Release Builds
 
-## Stack
+The GitHub Actions workflow builds Windows, macOS, and Linux artifacts when a version tag is pushed.
 
-Rust · Tauri · React · libp2p · Tor · WebRTC · TypeScript · Vite
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
-## Licence
+## License
 
-MIT — voir [LICENSE](LICENSE).
-
-*Créateur — développement full-stack (Rust & React), 2025.*
+MIT. See [LICENSE](LICENSE).

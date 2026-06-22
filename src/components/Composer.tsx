@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Mic, Paperclip, PhoneDown, Send, Smile } from "../icons";
+import { useTranslation } from "../i18n";
 
 interface Props {
   disabled: boolean;
@@ -23,6 +24,7 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
   const [emoji, setEmoji] = useState(false);
   const [recording, setRecording] = useState(false);
   const [secs, setSecs] = useState(0);
+  const { t } = useTranslation();
 
   const rec = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -30,9 +32,9 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
   const cancelled = useRef(false);
 
   function send() {
-    const t = text.trim();
-    if (!t) return;
-    onSend(t);
+    const body = text.trim();
+    if (!body) return;
+    onSend(body);
     setText("");
     setEmoji(false);
   }
@@ -52,7 +54,7 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
       cancelled.current = false;
       mr.ondataavailable = (e) => e.data.size && chunks.current.push(e.data);
       mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+        stream.getTracks().forEach((track) => track.stop());
         if (cancelled.current) return;
         const blob = new Blob(chunks.current, { type: "audio/webm" });
         const buf = new Uint8Array(await blob.arrayBuffer());
@@ -64,7 +66,7 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
       setSecs(0);
       timer.current = window.setInterval(() => setSecs((s) => s + 1), 1000);
     } catch (e) {
-      alert("Micro inaccessible : " + e);
+      alert(t("composer.micBlocked") + e);
     }
   }
 
@@ -81,11 +83,11 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
       <div className="composer recording">
         <span className="rec-dot" />
         <span className="rec-time">{fmt(secs)}</span>
-        <span className="rec-label">enregistrement…</span>
-        <button type="button" className="c-btn" onClick={() => stopRec(false)} title="Annuler">
+        <span className="rec-label">{t("composer.recording")}</span>
+        <button type="button" className="c-btn" onClick={() => stopRec(false)} title={t("chat.cancel")}>
           <PhoneDown />
         </button>
-        <button type="button" className="c-btn c-send" onClick={() => stopRec(true)} title="Envoyer">
+        <button type="button" className="c-btn c-send" onClick={() => stopRec(true)} title={t("composer.send")}>
           <Send />
         </button>
       </div>
@@ -97,18 +99,18 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
       <button type="button" className="c-btn" disabled={disabled} onClick={() => setEmoji((v) => !v)} title="Emoji">
         <Smile />
       </button>
-      <button type="button" className="c-btn" disabled={disabled} onClick={onSendFile} title="Envoyer un fichier chiffré">
+      <button type="button" className="c-btn" disabled={disabled} onClick={onSendFile} title={t("composer.sendEncryptedFile")}>
         <Paperclip />
       </button>
 
       <textarea rows={1} value={text} disabled={disabled} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
 
       {text.trim() ? (
-        <button type="button" className="c-btn c-send" disabled={disabled} onClick={send} title="Envoyer">
+        <button type="button" className="c-btn c-send" disabled={disabled} onClick={send} title={t("composer.send")}>
           <Send />
         </button>
       ) : (
-        <button type="button" className="c-btn" disabled={disabled} onClick={startRec} title="Message vocal">
+        <button type="button" className="c-btn" disabled={disabled} onClick={startRec} title={t("composer.voice")}>
           <Mic />
         </button>
       )}
@@ -116,7 +118,7 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
       {emoji && (
         <div className="emoji-pop">
           {EMOJIS.map((e, i) => (
-            <button key={i} type="button" onClick={() => { setText((t) => t + e); setEmoji(false); }}>
+            <button key={i} type="button" onClick={() => { setText((value) => value + e); setEmoji(false); }}>
               {e}
             </button>
           ))}

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { CallState } from "../useCall";
 import { avatarStyle } from "../util";
 import { Mic, MicOff, Phone, PhoneDown, Video } from "../icons";
+import { useTranslation } from "../i18n";
 
 interface Props {
   call: CallState;
@@ -15,6 +16,7 @@ interface Props {
 export default function Call({ call, peerName, onAccept, onHangup, onToggleMute, onToggleCam }: Props) {
   const localVid = useRef<HTMLVideoElement>(null);
   const remoteVid = useRef<HTMLVideoElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (localVid.current) localVid.current.srcObject = call.local;
@@ -31,13 +33,13 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
         <div className="call-card">
           <div className="avatar lg call-avatar-ring" style={{ margin: "0 auto", ...avatarStyle(call.peerId) }}>{ini}</div>
           <div className="call-who">{peerName}</div>
-          <div className="call-sub">appel {call.video ? "vidéo" : "audio"} entrant…</div>
+          <div className="call-sub">{call.video ? t("chat.videoCall") : t("chat.audioCall")} {t("call.incoming")}...</div>
           <div className="call-actions">
             <button className="call-btn accept" onClick={onAccept}>
-              <Phone size={16} /> Accepter
+              <Phone size={16} /> {t("call.accept")}
             </button>
             <button className="call-btn hangup" onClick={onHangup}>
-              <PhoneDown size={16} /> Refuser
+              <PhoneDown size={16} /> {t("call.decline")}
             </button>
           </div>
         </div>
@@ -59,18 +61,18 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
 
         {call.video && <video ref={localVid} className="call-local" autoPlay playsInline muted />}
 
-        <div className="call-status">{call.status === "calling" ? "connexion…" : "en communication · chiffré"}</div>
+        <div className="call-status">{call.status === "calling" ? t("call.connecting") : t("call.active")}</div>
 
         <div className="call-controls">
-          <button className={"call-btn" + (call.muted ? " on" : "")} onClick={onToggleMute} title={call.muted ? "Réactiver le micro" : "Couper le micro"}>
+          <button className={"call-btn" + (call.muted ? " on" : "")} onClick={onToggleMute} title={call.muted ? t("call.unmuteMic") : t("call.muteMic")}>
             {call.muted ? <MicOff /> : <Mic />}
           </button>
           {call.video && (
-            <button className={"call-btn" + (call.camOff ? " on" : "")} onClick={onToggleCam} title={call.camOff ? "Activer la caméra" : "Couper la caméra"}>
+            <button className={"call-btn" + (call.camOff ? " on" : "")} onClick={onToggleCam} title={call.camOff ? t("call.enableCamera") : t("call.disableCamera")}>
               <Video />
             </button>
           )}
-          <button className="call-btn hangup" onClick={onHangup} title="Raccrocher">
+          <button className="call-btn hangup" onClick={onHangup} title={t("call.hangup")}>
             <PhoneDown />
           </button>
         </div>

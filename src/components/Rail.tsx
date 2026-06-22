@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { View } from "../types";
 import { Globe, Home, Message, Moon, Settings } from "../icons";
+import { useTranslation } from "../i18n";
 
 interface Props {
   view: View;
@@ -9,10 +10,11 @@ interface Props {
 }
 
 export default function Rail({ view, onView, unreadCount }: Props) {
+  const { t } = useTranslation();
   const items: { id: View; icon: ReactNode; label: string }[] = [
-    { id: "home", icon: <Home />, label: "Accueil" },
-    { id: "messages", icon: <Message />, label: "Messages" },
-    { id: "network", icon: <Globe />, label: "Réseau" },
+    { id: "home", icon: <Home />, label: t("view.home") },
+    { id: "messages", icon: <Message />, label: t("view.messages") },
+    { id: "network", icon: <Globe />, label: t("view.network") },
   ];
 
   return (
@@ -37,7 +39,7 @@ export default function Rail({ view, onView, unreadCount }: Props) {
       <button
         className={"rail-btn" + (view === "settings" ? " active" : "")}
         onClick={() => onView("settings")}
-        title="Réglages"
+        title={t("view.settings")}
       >
         <Settings />
       </button>

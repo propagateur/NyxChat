@@ -4,6 +4,7 @@ import type { ChatMessage, Peer } from "../types";
 import { avatarStyle, formatDay, formatTime, formatSize, initial, isAudio, isImage, sameDay } from "../util";
 import { renderRich } from "../richtext";
 import { FileDoc, Moon, Phone, ShieldCheck, Video } from "../icons";
+import { useTranslation } from "../i18n";
 import Composer from "./Composer";
 
 interface Props {
@@ -27,6 +28,7 @@ interface Props {
 
 export default function Chat(props: Props) {
   const { peer, messages, verified, inCall, dragging, showFp, replyTo, onCancelReply, onToggleFp, onSend, onSendFile, onSendVoice, onCall, onVerify, onOpenImage, onMsgMenu } = props;
+  const { t } = useTranslation();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,8 +40,8 @@ export default function Chat(props: Props) {
       <main className="chat empty">
         <div className="welcome">
           <Moon size={48} className="mark" />
-          <h2>Choisis une conversation</h2>
-          <p>Sélectionne un pair à gauche, ou ajoute un contact depuis l'Accueil pour démarrer un échange chiffré de bout en bout.</p>
+          <h2>{t("chat.emptyTitle")}</h2>
+          <p>{t("chat.emptyBody")}</p>
         </div>
       </main>
     );
@@ -57,19 +59,19 @@ export default function Chat(props: Props) {
         </span>
         <div className="row-text">
           <span className="row-name">
-            {peer.name ?? "Pair inconnu"}
+            {peer.name ?? t("chat.unknownPeer")}
             {peer.transport === "tor" && <span className="badge tor">tor</span>}
           </span>
-          <span className={"chat-status" + (peer.online ? " on" : "")}>{peer.online ? "en ligne · chiffré" : "hors ligne"}</span>
+          <span className={"chat-status" + (peer.online ? " on" : "")}>{peer.online ? t("chat.online") : t("chat.offline")}</span>
         </div>
         <div className="head-actions">
-          <button className="icon-btn" disabled={!canCall} onClick={() => onCall(false)} title="Appel audio">
+          <button className="icon-btn" disabled={!canCall} onClick={() => onCall(false)} title={t("chat.audioCall")}>
             <Phone />
           </button>
-          <button className="icon-btn" disabled={!canCall} onClick={() => onCall(true)} title="Appel vidéo">
+          <button className="icon-btn" disabled={!canCall} onClick={() => onCall(true)} title={t("chat.videoCall")}>
             <Video />
           </button>
-          <button className={"icon-btn" + (verified ? " on" : "")} onClick={onToggleFp} title="Vérifier l'identité">
+          <button className={"icon-btn" + (verified ? " on" : "")} onClick={onToggleFp} title={t("chat.verifyIdentity")}>
             <ShieldCheck />
           </button>
         </div>
@@ -77,18 +79,18 @@ export default function Chat(props: Props) {
 
       {showFp && (
         <div className="fp-panel">
-          <p>Comparez cette empreinte avec votre interlocuteur par un canal sûr. Si elle correspond des deux côtés, personne ne peut s'intercaler.</p>
-          <code>{peer.fingerprint ?? "en attente de la clé…"}</code>
+          <p>{t("chat.fpHelp")}</p>
+          <code>{peer.fingerprint ?? t("chat.waitingKey")}</code>
           <div className="fp-actions">
             <button className={"btn" + (verified ? " primary" : "")} disabled={!peer.fingerprint} onClick={onVerify}>
-              <ShieldCheck size={15} /> {verified ? "Vérifié" : "Marquer comme vérifié"}
+              <ShieldCheck size={15} /> {verified ? t("network.verified") : t("chat.markVerified")}
             </button>
           </div>
         </div>
       )}
 
       <div className="messages">
-        {messages.length === 0 && <div className="no-msg">Aucun message. Dites bonjour.</div>}
+        {messages.length === 0 && <div className="no-msg">{t("chat.noMessages")}</div>}
         {messages.map((m, i) => {
           const prev = messages[i - 1];
           const newDay = !prev || !sameDay(prev.ts, m.ts);
@@ -115,7 +117,7 @@ export default function Chat(props: Props) {
                       <span className="file-name" style={{ display: "block" }}>{m.file.name}</span>
                       <span className="file-sub">
                         {formatSize(m.file.size)}
-                        {m.outgoing ? " · envoyé" : " · reçu → Téléchargements"}
+                        {m.outgoing ? ` · ${t("chat.sent")}` : ` · ${t("chat.receivedDownloads")}`}
                       </span>
                     </span>
                   </span>
@@ -123,7 +125,7 @@ export default function Chat(props: Props) {
                   <span className="bubble-text">{renderBody(m.text)}</span>
                 )}
                 <span className="bubble-meta">
-                  {m.failed && <span className="warn">non envoyé · </span>}
+                  {m.failed && <span className="warn">{t("chat.notSent")} · </span>}
                   {formatTime(m.ts)}
                 </span>
               </div>
@@ -135,27 +137,26 @@ export default function Chat(props: Props) {
 
       {replyTo && (
         <div className="reply-bar">
-          <span className="reply-quote">Réponse à : {replyTo}</span>
-          <button className="c-btn" onClick={onCancelReply} title="Annuler">
-            ×
+          <span className="reply-quote">{t("chat.replyTo")} {replyTo}</span>
+          <button className="c-btn" onClick={onCancelReply} title={t("chat.cancel")}>
+            x
           </button>
         </div>
       )}
 
       <Composer
         disabled={!canSend}
-        placeholder={canSend ? `Message à ${peer.name ?? "ce pair"}…` : "Échange de clé en cours…"}
+        placeholder={canSend ? `${t("chat.messageTo")} ${peer.name ?? t("chat.thisPeer")}...` : t("chat.keyExchange")}
         onSend={onSend}
         onSendFile={onSendFile}
         onSendVoice={onSendVoice}
       />
 
-      {dragging && <div className="drop">Déposez un fichier pour l'envoyer chiffré</div>}
+      {dragging && <div className="drop">{t("chat.drop")}</div>}
     </main>
   );
 }
 
-// Rend les lignes de citation (« > … ») comme un bloc, puis le reste en markdown.
 function renderBody(text: string) {
   const lines = text.split("\n");
   const quote: string[] = [];

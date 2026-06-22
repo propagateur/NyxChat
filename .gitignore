@@ -1,20 +1,21 @@
-# deps & build
-node_modules
-dist
-src-tauri/target
+# Dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
 
-# binaire Tor embarqué (récupéré via script, non versionné)
+# Embedded Tor bundle fetched by scripts
 src-tauri/vendor/*
 !src-tauri/vendor/WebView2Loader.dll
 
-# tauri génère ça
-src-tauri/gen/schemas
+# Generated Tauri files
+src-tauri/gen/
 
-# divers
+# Local archives and installers
+*.tar.gz
+*.zip
+*.exe
+
+# Logs and OS metadata
+*.log
 .DS_Store
 Thumbs.db
-*.log
-
-# installeurs builds locaux
-*.exe
-!src-tauri/**

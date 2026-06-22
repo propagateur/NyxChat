@@ -3,6 +3,7 @@ import type { Accent, Identity } from "../types";
 import type { Theme } from "../theme";
 import { ACCENTS } from "../theme";
 import { Check } from "../icons";
+import { useTranslation } from "../i18n";
 
 interface Props {
   me: Identity | null;
@@ -17,13 +18,14 @@ interface Props {
 
 export default function SettingsView({ me, accent, theme, keepHistory, onRename, onAccent, onTheme, onKeepHistory }: Props) {
   const [name, setName] = useState(me?.name ?? "");
+  const { lang, setLanguage, t } = useTranslation();
 
   return (
     <div className="settings view">
-      <h1>Réglages</h1>
+      <h1>{t("settings.title")}</h1>
 
       <div className="field">
-        <label>Nom affiché</label>
+        <label>{t("settings.name")}</label>
         <input
           className="text"
           value={name}
@@ -35,15 +37,23 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
       </div>
 
       <div className="field">
-        <label>Apparence</label>
+        <label>{t("settings.language")}</label>
         <div className="seg">
-          <button className={theme === "dark" ? "on" : ""} onClick={() => onTheme("dark")}>Sombre</button>
-          <button className={theme === "light" ? "on" : ""} onClick={() => onTheme("light")}>Clair</button>
+          <button className={lang === "en" ? "on" : ""} onClick={() => setLanguage("en")}>English</button>
+          <button className={lang === "fr" ? "on" : ""} onClick={() => setLanguage("fr")}>Francais</button>
         </div>
       </div>
 
       <div className="field">
-        <label>Couleur d'accent</label>
+        <label>{t("settings.appearance")}</label>
+        <div className="seg">
+          <button className={theme === "dark" ? "on" : ""} onClick={() => onTheme("dark")}>{t("settings.dark")}</button>
+          <button className={theme === "light" ? "on" : ""} onClick={() => onTheme("light")}>{t("settings.light")}</button>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>{t("settings.accent")}</label>
         <div className="accents">
           {ACCENTS.map((a) => (
             <button key={a.id} className={"swatch" + (accent === a.id ? " sel" : "")} onClick={() => onAccent(a.id)} title={a.label}>
@@ -55,30 +65,27 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
       </div>
 
       <div className="field">
-        <label>Confidentialité</label>
+        <label>{t("settings.privacy")}</label>
         <button className={"toggle" + (keepHistory ? " on" : "")} onClick={() => onKeepHistory(!keepHistory)}>
           <span className="knob" />
-          <span>Conserver l'historique des conversations</span>
+          <span>{t("settings.keepHistory")}</span>
         </button>
         <p className="hint" style={{ marginTop: 8 }}>
-          {keepHistory
-            ? "L'historique est gardé localement sur cet appareil (chiffré uniquement sur le réseau)."
-            : "Par défaut, aucun message n'est conservé : tout disparaît à la fermeture."}
+          {keepHistory ? t("settings.historyOn") : t("settings.historyOff")}
         </p>
       </div>
 
       <div className="field">
-        <label>Identité</label>
+        <label>{t("settings.identity")}</label>
         <div className="about" style={{ borderTop: "none", paddingTop: 0 }}>
-          Empreinte : <code>{me?.fingerprint ?? "…"}</code>
+          {t("settings.fingerprint")} <code>{me?.fingerprint ?? "..."}</code>
           <br />
-          Adresse Tor : <code>{me?.onion || "en cours de publication…"}</code>
+          {t("settings.torAddress")} <code>{me?.onion || t("settings.publishing")}</code>
         </div>
       </div>
 
       <div className="about">
-        <b>NyxChat</b> — messagerie pair-à-pair chiffrée de bout en bout. Pas de serveur, pas de
-        compte. Réseau local via libp2p · Internet via services onion Tor · appels WebRTC.
+        <b>NyxChat</b> — {t("settings.about")}
       </div>
     </div>
   );

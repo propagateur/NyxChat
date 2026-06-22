@@ -27,6 +27,7 @@ import SettingsView from "./components/SettingsView";
 import Call from "./components/Call";
 import CommandPalette from "./components/CommandPalette";
 import ContextMenu, { type CtxItem } from "./components/ContextMenu";
+import { useTranslation } from "./i18n";
 
 function loadThreads(): Record<string, ChatMessage[]> {
   if (!loadBool("nyx.keepHistory", false)) return {};
@@ -38,6 +39,7 @@ function loadThreads(): Record<string, ChatMessage[]> {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const [me, setMe] = useState<Identity | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [threads, setThreads] = useState<Record<string, ChatMessage[]>>(loadThreads);
@@ -92,14 +94,14 @@ export default function App() {
       const focused = viewRef.current === "messages" && activeRef.current === m.peer_id && !document.hidden;
       if (!focused) {
         bumpUnread(m.peer_id);
-        if (!mutedRef.current.has(m.peer_id)) notify(m.name ?? "Nouveau message", m.text);
+        if (!mutedRef.current.has(m.peer_id)) notify(m.name ?? t("view.messages"), m.text);
       }
     });
     const unFile = onFile((f) => {
       setThreads((t) => append(t, f.peer_id, { text: "", ts: f.ts, outgoing: false, file: { name: f.file_name, size: f.size, path: f.path } }));
       if (!(viewRef.current === "messages" && activeRef.current === f.peer_id)) {
         bumpUnread(f.peer_id);
-        if (!mutedRef.current.has(f.peer_id)) notify(f.from_name ?? "Fichier reçu", f.file_name);
+        if (!mutedRef.current.has(f.peer_id)) notify(f.from_name ?? t("list.received"), f.file_name);
       }
     });
 
@@ -197,10 +199,10 @@ export default function App() {
     if (!active) return;
     const items: CtxItem[] = [];
     if (msg.text && !msg.file) {
-      items.push({ label: "Répondre", onClick: () => setReplyTo(msg.text.replace(/^> .*\n/, "").slice(0, 120)) });
-      items.push({ label: "Copier", onClick: () => navigator.clipboard.writeText(msg.text) });
+      items.push({ label: t("chat.reply"), onClick: () => setReplyTo(msg.text.replace(/^> .*\n/, "").slice(0, 120)) });
+      items.push({ label: t("chat.copy"), onClick: () => navigator.clipboard.writeText(msg.text) });
     }
-    items.push({ label: "Supprimer", danger: true, onClick: () => deleteMessage(active, index) });
+    items.push({ label: t("chat.delete"), danger: true, onClick: () => deleteMessage(active, index) });
     setMenu({ x: e.clientX, y: e.clientY, items });
   }
   function openConvMenu(e: MouseEvent, peerId: string) {
@@ -209,8 +211,8 @@ export default function App() {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: pinned.has(peerId) ? "Désépingler" : "Épingler", onClick: () => togglePin(peerId) },
-        { label: muted.has(peerId) ? "Réactiver le son" : "Couper le son", onClick: () => toggleMutePeer(peerId) },
+        { label: pinned.has(peerId) ? t("chat.unpin") : t("chat.pin"), onClick: () => togglePin(peerId) },
+        { label: muted.has(peerId) ? t("chat.unmute") : t("chat.mute"), onClick: () => toggleMutePeer(peerId) },
       ],
     });
   }
@@ -221,7 +223,7 @@ export default function App() {
       const info = await sendFile(peerId, path);
       setThreads((t) => append(t, peerId, { text: "", ts, outgoing: true, file: info }));
     } catch (e) {
-      setThreads((t) => append(t, peerId, { text: `fichier non envoyé : ${e}`, ts, outgoing: true, failed: true }));
+      setThreads((threads) => append(threads, peerId, { text: `${t("chat.fileNotSent")} ${e}`, ts, outgoing: true, failed: true }));
       console.error(e);
     }
   }
@@ -237,7 +239,7 @@ export default function App() {
     const ts = Date.now();
     try {
       const info = await sendVoice(active, bytes, ext);
-      setThreads((t) => append(t, active, { text: "", ts, outgoing: true, file: { name: "Message vocal", size: info.size, path: info.path } }));
+      setThreads((threads) => append(threads, active, { text: "", ts, outgoing: true, file: { name: t("chat.voiceMessage"), size: info.size, path: info.path } }));
     } catch (e) {
       console.error("voice:", e);
     }
@@ -257,12 +259,12 @@ export default function App() {
       await connectOnion(onion);
       setView("network");
     } catch (e) {
-      alert("Connexion impossible : " + e);
+      alert(t("chat.connectionFailed") + e);
     }
   }
 
   function handleCall(video: boolean) {
-    if (active) startCall(active, video).catch((e) => alert("Accès micro/caméra impossible : " + e));
+    if (active) startCall(active, video).catch((e) => alert(t("chat.mediaAccessFailed") + e));
   }
 
   function toggleVerify(id: string) {
@@ -278,7 +280,7 @@ export default function App() {
     saveBool("nyx.keepHistory", v);
   }
 
-  const callPeerName = call ? peers.find((p) => p.peer_id === call.peerId)?.name ?? "Pair inconnu" : "";
+  const callPeerName = call ? peers.find((p) => p.peer_id === call.peerId)?.name ?? t("chat.unknownPeer") : "";
 
   return (
     <div className="app">
