@@ -1,130 +1,108 @@
 # NyxChat
 
-**Messagerie P2P chiffrée de bout en bout — application de bureau.**
+**Messagerie pair-à-pair, chiffrée de bout en bout — application de bureau.**
 
-NyxChat est une messagerie entièrement pair-à-pair, sans serveur central. Deux
-instances sur le même réseau se découvrent toutes seules et échangent des
-messages chiffrés de bout en bout : ni un attaquant sur le réseau, ni
-l'infrastructure, ne peuvent lire ce qui transite.
+NyxChat est une messagerie sans serveur central et sans compte : ton identité
+n'est qu'une paire de clés sur ta machine. Sur un même réseau local les pairs se
+découvrent tout seuls ; à distance, on s'ajoute par une adresse **`.onion`** et
+tout passe par **Tor**. Ni un attaquant sur le réseau, ni une quelconque
+infrastructure, ne peuvent lire ce qui transite.
 
-Construit avec **Tauri** pour rester léger et natif sur les trois plateformes
-desktop.
-
----
-
-## État du projet
-
-- ✅ Découverte automatique des pairs sur le réseau local (mDNS)
-- ✅ Connexion directe pair-à-pair via libp2p (TCP + Noise + Yamux)
-- ✅ Chiffrement de bout en bout (X25519 + XSalsa20-Poly1305)
-- ✅ Transfert de fichiers chiffré (découpé en morceaux, chacun chiffré)
-- ✅ Appels audio et vidéo (WebRTC, signalisation chiffrée via libp2p, STUN)
-- ✅ Vérification d'identité par empreinte de clé publique
-- ✅ Identité persistante (même empreinte d'une session à l'autre)
-- ✅ Aucun historique de messages écrit sur le disque (rien à saisir a posteriori)
-
-**Portée réseau.** La découverte et les conversations sont pensées pour le réseau
-local. Les **appels** utilisent un serveur STUN public pour traverser la plupart
-des box/routeurs domestiques (le média reste P2P ; un TURN peut être ajouté pour
-les NAT symétriques). Étendre la *messagerie* à l'Internet ouvert demanderait un
-nœud relais libp2p — volontairement hors périmètre pour rester sans serveur.
+Construit avec **Tauri** pour rester léger et natif sur le bureau.
 
 ---
 
-## Prérequis
+## Fonctionnalités
 
-Deux outils à installer :
-
-1. **Rust** (édition stable) — https://rustup.rs
-2. **Node.js** 18+ — https://nodejs.org
-
-Sous Windows, WebView2 est déjà présent sur Windows 10/11 récents.
-
-## Lancer en développement
-
-```bash
-npm install
-npm run tauri dev
-```
-
-Le premier lancement compile tout libp2p : comptez quelques minutes. Les
-suivants sont quasi instantanés.
-
-Pour tester le P2P, lancez NyxChat sur **deux machines du même réseau local**
-(ou deux comptes / VM). Elles se découvrent automatiquement et apparaissent dans
-la liste des pairs.
-
-## Construire un binaire natif
-
-```bash
-npm run tauri build
-```
+- 🔒 Chiffrement de bout en bout (X25519 + XSalsa20-Poly1305)
+- 🛰️ Découverte automatique des pairs sur le réseau local (mDNS, libp2p)
+- 🧅 Joignable depuis n'importe où via **services onion Tor** (ajout par `.onion`, QR)
+- 📎 Transfert de fichiers chiffré (avec aperçu d'images)
+- 🎤 Messages vocaux
+- 📞 Appels audio et vidéo (WebRTC, signalisation chiffrée, STUN)
+- 🛡️ Vérification d'identité par empreinte de clé (« safety number »)
+- 🎨 Thèmes clair/sombre + couleurs d'accent
+- ⌨️ Palette de commandes (Ctrl-K), emoji, glisser-déposer, markdown léger
+- 📌 Épingler / couper le son des conversations, contacts vérifiés
+- 🔔 Icône dans la zone de notification (reste joignable en arrière-plan)
+- 🕶️ Aucun historique écrit sur le disque par défaut
 
 ---
 
 ## Comment ça marche
 
 ```
-┌──────────── Tauri (Rust) ────────────┐        ┌──────────── React ───────────┐
-│  net.rs                               │        │  api.ts   (invoke / listen)   │
-│   └─ swarm libp2p (tâche async)       │  IPC   │  App.tsx  (état des fils)     │
-│       mDNS · request-response · Noise │◄──────►│  Sidebar / Chat               │
-│  crypto.rs                            │ events │                               │
-│   └─ X25519 + XSalsa20-Poly1305       │        │                               │
-└───────────────────────────────────────┘        └───────────────────────────────┘
+┌──────────────── Tauri (Rust) ────────────────┐      ┌─────────── React / TS ───────────┐
+│  net.rs    swarm libp2p (mDNS, Noise, yamux)  │ IPC  │  Rail · Accueil · Messages        │
+│  tornet.rs transport Tor (services onion)     │◄────►│  Réseau · Réglages · Appel        │
+│  crypto.rs X25519 + XSalsa20-Poly1305         │event │  (api.ts : invoke / listen)       │
+└────────────────────────────────────────────────┘      └───────────────────────────────────┘
 ```
 
-Chaque pair possède **deux clés** :
+Chaque pair possède **deux clés** : une identité **ed25519** (le `PeerId` libp2p,
+pour le transport) et une paire **X25519** qui chiffre réellement le contenu.
+À la rencontre, les pairs s'échangent leur clé publique X25519 (message `Hello`) ;
+ensuite chaque message est scellé avec `crypto_box` et n'est lisible que par le
+destinataire. Les fichiers suivent le même chemin, découpés en morceaux de 256 Ko
+chacun chiffré séparément.
 
-- une identité **ed25519** (le `PeerId` libp2p, pour le transport) ;
-- une paire **X25519** qui chiffre réellement le contenu des messages.
+Les **appels** utilisent le moteur WebRTC du webview : le flux audio/vidéo va en
+direct entre les deux pairs, seule la signalisation (SDP/ICE) passe par le canal
+chiffré. Aucun serveur de signalisation.
 
-Quand deux pairs se rencontrent, ils s'échangent leur clé publique X25519 (le
-message `Hello`). À partir de là, chaque message est scellé avec
-`crypto_box` (XSalsa20-Poly1305) et n'est déchiffrable que par le destinataire.
-
-Les fichiers suivent le même chemin : découpés en morceaux de 256 Ko, chacun
-chiffré séparément, envoyés puis réassemblés et enregistrés dans Téléchargements.
-
-Les **appels** utilisent le moteur WebRTC du webview pour le média (le flux
-audio/vidéo va en direct entre les deux pairs). Seule la *signalisation* —
-l'échange des descriptions SDP et des candidats ICE — passe par notre canal
-libp2p, elle aussi chiffrée de bout en bout. En clair : aucun serveur de
-signalisation, et le contenu de l'appel ne transite par rien d'autre que les
-deux machines.
-
-> Caméra/micro : au premier appel, Windows peut demander l'autorisation d'accès.
-> Vérifie aussi que les apps de bureau ont le droit d'utiliser la caméra/le
-> micro dans les *Paramètres → Confidentialité*.
-
-L'**empreinte** affichée à côté de chaque pair est un hachage SHA-256 de sa clé
-publique. La comparer de visu avec son interlocuteur garantit l'absence
-d'attaque de l'homme du milieu — c'est le même principe que le « safety number »
-de Signal.
+L'**empreinte** affichée près de chaque pair est un SHA-256 de sa clé publique :
+la comparer de visu écarte toute attaque de l'homme du milieu.
 
 ---
 
-## Note de sécurité
+## Portée réseau
 
-Le chiffrement repose sur des primitives éprouvées (les mêmes que NaCl/libsodium),
-mais ce projet **n'a pas fait l'objet d'un audit de sécurité formel**. À utiliser
-pour apprendre, expérimenter et bricoler — pas pour protéger des secrets d'État.
+- **Réseau local** : découverte automatique (mDNS), connexion directe.
+- **Internet** : services onion Tor — tu partages ton adresse `.onion`, ton
+  correspondant colle la sienne, et vous discutez où que vous soyez, sans ouvrir
+  de port ni dépendre d'un serveur. Le réseau Tor fait office d'infrastructure
+  partagée (et ne voit pas le contenu chiffré).
+- **Appels** : conçus pour le réseau local + STUN pour traverser la plupart des
+  box domestiques (le média WebRTC/UDP ne transite pas par Tor).
 
 ---
 
-## Régénérer les icônes
+## Sécurité
 
-Le logo est dans `src-tauri/icons/`. Pour tout regénérer à partir de la source :
+Le chiffrement repose sur des primitives éprouvées (les mêmes que
+NaCl/libsodium). Ce projet **n'a pas fait l'objet d'un audit de sécurité
+formel** — à utiliser pour apprendre et expérimenter, pas pour protéger des
+secrets critiques.
+
+---
+
+## Développement
+
+Prérequis : **Rust** (stable, https://rustup.rs) et **Node.js** 18+.
 
 ```bash
-npm run tauri icon src-tauri/icons/icon-source.png
+# 1. récupérer le binaire Tor embarqué (Windows)
+powershell -ExecutionPolicy Bypass -File scripts/fetch-tor.ps1
+
+# 2. installer les dépendances front
+npm install
+
+# 3. lancer en développement
+npm run tauri dev
+
+# 4. construire un installeur natif
+npm run tauri build
 ```
+
+Le premier build compile toute la pile libp2p/Tauri : comptez quelques minutes.
+Pour tester le P2P, lancez NyxChat sur **deux machines** (même réseau local, ou
+échange d'adresses `.onion` à distance).
 
 ---
 
 ## Stack
 
-Rust · Tauri · React · libp2p · WebRTC · TypeScript · Vite
+Rust · Tauri · React · libp2p · Tor · WebRTC · TypeScript · Vite
 
 ## Licence
 

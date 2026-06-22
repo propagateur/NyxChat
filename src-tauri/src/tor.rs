@@ -41,7 +41,10 @@ pub async fn start(
     let hs_dir = data_dir.join("hs");
     std::fs::create_dir_all(&hs_dir).map_err(|e| e.to_string())?;
 
-    let mut child = Command::new(tor_exe)
+    // On construit via std::process pour pouvoir poser CREATE_NO_WINDOW :
+    // tor.exe est une appli console, sans ça Windows ouvre une fenêtre cmd.
+    let mut std_cmd = std::process::Command::new(tor_exe);
+    std_cmd
         .arg("--SocksPort")
         .arg(socks_port.to_string())
         .arg("--DataDirectory")
@@ -52,7 +55,14 @@ pub async fn start(
         .arg(format!("{VIRTUAL_PORT} 127.0.0.1:{local_port}"))
         .arg("--Log")
         .arg("notice stdout")
-        .stdout(Stdio::piped())
+        .stdout(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = Command::from(std_cmd)
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("lancement de Tor impossible : {e}"))?;
