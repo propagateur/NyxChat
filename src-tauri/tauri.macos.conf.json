@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": [
+      "vendor/tor/tor/tor",
+      "vendor/tor/tor/*.dylib"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": [
+      "vendor/tor/tor/tor.exe",
+      "vendor/WebView2Loader.dll"
+    ]
+  }
+}
