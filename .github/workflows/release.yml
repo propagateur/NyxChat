@@ -20,9 +20,6 @@ jobs:
           - os: macos-14
             label: macOS (Apple Silicon)
             tor-script: bash scripts/fetch-tor.sh
-          - os: macos-13
-            label: macOS (Intel)
-            tor-script: bash scripts/fetch-tor.sh
           - os: ubuntu-22.04
             label: Linux
             tor-script: bash scripts/fetch-tor.sh
@@ -96,9 +93,8 @@ jobs:
 
             | Platform | File |
             |----------|------|
-            | 🪟 Windows | `NyxChat_*_x64-setup.exe` |
+            | 🪟 Windows | `NyxChat_*_x64-setup.exe` / `.msi` |
             | 🍎 macOS (Apple Silicon) | `NyxChat_*_aarch64.dmg` |
-            | 🍎 macOS (Intel) | `NyxChat_*_x64.dmg` |
             | 🐧 Linux | `NyxChat_*_amd64.deb` / `NyxChat-*.x86_64.rpm` |
 
             ### Changes
