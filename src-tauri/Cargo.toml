@@ -1,6 +1,6 @@
 [package]
 name = "nyxchat"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Messagerie P2P chiffrée de bout en bout"
 default-run = "nyxchat"
