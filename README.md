@@ -14,18 +14,18 @@ Construit avec **Tauri** pour rester léger et natif sur le bureau.
 
 ## Fonctionnalités
 
-- 🔒 Chiffrement de bout en bout (X25519 + XSalsa20-Poly1305)
-- 🛰️ Découverte automatique des pairs sur le réseau local (mDNS, libp2p)
-- 🧅 Joignable depuis n'importe où via **services onion Tor** (ajout par `.onion`, QR)
-- 📎 Transfert de fichiers chiffré (avec aperçu d'images)
-- 🎤 Messages vocaux
-- 📞 Appels audio et vidéo (WebRTC, signalisation chiffrée, STUN)
-- 🛡️ Vérification d'identité par empreinte de clé (« safety number »)
-- 🎨 Thèmes clair/sombre + couleurs d'accent
-- ⌨️ Palette de commandes (Ctrl-K), emoji, glisser-déposer, markdown léger
-- 📌 Épingler / couper le son des conversations, contacts vérifiés
-- 🔔 Icône dans la zone de notification (reste joignable en arrière-plan)
-- 🕶️ Aucun historique écrit sur le disque par défaut
+-  Chiffrement de bout en bout (X25519 + XSalsa20-Poly1305)
+-  Découverte automatique des pairs sur le réseau local (mDNS, libp2p)
+-  Joignable depuis n'importe où via **services onion Tor** (ajout par `.onion`, QR)
+-  Transfert de fichiers chiffré (avec aperçu d'images)
+-  Messages vocaux
+-  Appels audio et vidéo (WebRTC, signalisation chiffrée, STUN)
+-  Vérification d'identité par empreinte de clé (« safety number »)
+-  Thèmes clair/sombre + couleurs d'accent
+-  Palette de commandes (Ctrl-K), emoji, glisser-déposer, markdown léger
+-  Épingler / couper le son des conversations, contacts vérifiés
+-  Icône dans la zone de notification (reste joignable en arrière-plan)
+-  Aucun historique écrit sur le disque par défaut
 
 ---
 
