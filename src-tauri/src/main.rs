@@ -145,6 +145,15 @@ async fn set_name(
 }
 
 fn main() {
+    // On many Linux setups (NVIDIA, some VMs/drivers) WebKitGTK renders a blank
+    // window with its hardware-accelerated DMABUF/compositing path. Disabling it
+    // before GTK initializes makes the UI show up. Harmless on other platforms.
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

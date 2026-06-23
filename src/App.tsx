@@ -19,6 +19,7 @@ import {
 } from "./api";
 import type { Accent, ChatMessage, Identity, Peer, View } from "./types";
 import { applyAccent, applyTheme, loadAccent, loadBool, loadTheme, saveBool, type Theme } from "./theme";
+import { playMessage } from "./sound";
 import { useCall } from "./useCall";
 import Rail from "./components/Rail";
 import Home from "./components/Home";
@@ -103,14 +104,20 @@ export default function App() {
       const focused = viewRef.current === "messages" && activeRef.current === m.peer_id && !document.hidden;
       if (!focused) {
         bumpUnread(m.peer_id);
-        if (!mutedRef.current.has(m.peer_id)) notify(m.name ?? t("view.messages"), m.text);
+        if (!mutedRef.current.has(m.peer_id)) {
+          notify(m.name ?? t("view.messages"), m.text);
+          playMessage();
+        }
       }
     });
     const unFile = onFile((f) => {
       setThreads((t) => append(t, f.peer_id, { text: "", ts: f.ts, outgoing: false, file: { name: f.file_name, size: f.size, path: f.path } }));
       if (!(viewRef.current === "messages" && activeRef.current === f.peer_id)) {
         bumpUnread(f.peer_id);
-        if (!mutedRef.current.has(f.peer_id)) notify(f.from_name ?? t("list.received"), f.file_name);
+        if (!mutedRef.current.has(f.peer_id)) {
+          notify(f.from_name ?? t("list.received"), f.file_name);
+          playMessage();
+        }
       }
     });
 

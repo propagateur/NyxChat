@@ -4,6 +4,7 @@ import type { Theme } from "../theme";
 import { ACCENTS } from "../theme";
 import { loadTurn, saveTurn } from "../calls";
 import { loadDevices, saveDevices, useMediaDevices, outputSelectable } from "../devices";
+import { soundsEnabled, setSounds } from "../sound";
 import { Check } from "../icons";
 import { useTranslation, LANGS, type Lang } from "../i18n";
 
@@ -22,6 +23,7 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
   const [name, setName] = useState(me?.name ?? "");
   const [turn, setTurn] = useState(loadTurn);
   const [devicePrefs, setDevicePrefs] = useState(loadDevices);
+  const [sounds, setSoundsOn] = useState(soundsEnabled);
   const { devices, hasLabels, requestAccess } = useMediaDevices();
   const { lang, setLanguage, t } = useTranslation();
 
@@ -95,6 +97,17 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
         <p className="hint" style={{ marginTop: 8 }}>
           {keepHistory ? t("settings.historyOn") : t("settings.historyOff")}
         </p>
+      </div>
+
+      <div className="field">
+        <label>{t("settings.notifications")}</label>
+        <button
+          className={"toggle" + (sounds ? " on" : "")}
+          onClick={() => { const v = !sounds; setSoundsOn(v); setSounds(v); }}
+        >
+          <span className="knob" />
+          <span>{t("settings.sounds")}</span>
+        </button>
       </div>
 
       <div className="field">

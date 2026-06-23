@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { onSignal, sendSignal } from "./api";
 import { buildIceServers } from "./calls";
 import { getUserMediaWithPrefs } from "./devices";
+import { startRing, stopRing } from "./sound";
 import { useTranslation } from "./i18n";
 
 // Messages échangés sur le canal de signalisation (sérialisés en JSON).
@@ -67,6 +68,7 @@ export function useCall() {
 
   const cleanup = useCallback(() => {
     clearRing();
+    stopRing();
     pc.current?.close();
     pc.current = null;
     localStream.current?.getTracks().forEach((t) => t.stop());
@@ -190,6 +192,7 @@ export function useCall() {
     const inc = pendingOffer.current;
     if (!inc) return;
     clearRing();
+    stopRing();
     try {
       const stream = await getMedia(inc.video);
       isCaller.current = false;
@@ -258,6 +261,7 @@ export function useCall() {
           }
           pendingOffer.current = { peerId: peer_id, sdp: sig.sdp, video: sig.video };
           setCall({ peerId: peer_id, status: "incoming", video: sig.video, local: null, remote: null, muted: false, camOff: false });
+          startRing();
           // Auto-decline a call that is never picked up.
           clearRing();
           ringTimer.current = window.setTimeout(() => {
