@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crypto_box::{PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::{sleep, timeout};
 
 use crate::crypto;
 use crate::net::{Ack, FileSent, FileWriter, IncomingMessage, ReceivedFile, Shared, SignalMsg, Wire, FILE_CHUNK};
@@ -138,12 +139,32 @@ pub async fn start(
                 let app = app.clone();
                 let my_name = shared.me.lock().unwrap().name.clone();
                 tokio::spawn(async move {
-                    match tor::dial(SOCKS_PORT, &onion).await {
-                        Ok(stream) => {
-                            let hello = Wire::Hello { key: my_pub, name: my_name };
-                            spawn_conn(stream, Some(hello), peers, inbox, shared, app);
+                    // Reaching an onion service can take a while (Tor may still
+                    // be bootstrapping, the peer may be briefly offline, and
+                    // building the rendezvous circuit is slow). Retry with
+                    // backoff instead of failing on the first attempt, and tell
+                    // the UI if we ultimately give up.
+                    let deadline = Instant::now() + Duration::from_secs(180);
+                    let mut delay = Duration::from_secs(2);
+                    loop {
+                        match timeout(Duration::from_secs(45), tor::dial(SOCKS_PORT, &onion)).await {
+                            Ok(Ok(stream)) => {
+                                let hello = Wire::Hello { key: my_pub, name: my_name };
+                                spawn_conn(stream, Some(hello), peers, inbox, shared, app);
+                                return;
+                            }
+                            Ok(Err(e)) => eprintln!("[nyx] onion dial failed: {e}"),
+                            Err(_) => eprintln!("[nyx] onion dial timed out"),
                         }
-                        Err(e) => eprintln!("[nyx] connexion onion échouée : {e}"),
+                        if Instant::now() >= deadline {
+                            let _ = app.emit(
+                                "connect_error",
+                                format!("Could not reach {onion}. They may be offline, or Tor is still warming up — try again."),
+                            );
+                            return;
+                        }
+                        sleep(delay).await;
+                        delay = (delay * 2).min(Duration::from_secs(15));
                     }
                 });
             }

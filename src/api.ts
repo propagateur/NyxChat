@@ -39,6 +39,10 @@ export const onIdentity = (cb: (id: Identity) => void): Promise<UnlistenFn> =>
 export const onTorError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
   listen<string>("tor_error", (e) => cb(e.payload));
 
+// Émis quand la connexion à l'adresse onion d'un pair finit par échouer.
+export const onConnectError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+  listen<string>("connect_error", (e) => cb(e.payload));
+
 export const onMessage = (cb: (msg: IncomingMessage) => void): Promise<UnlistenFn> =>
   listen<IncomingMessage>("message", (e) => cb(e.payload));
 

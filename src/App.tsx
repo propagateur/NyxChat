@@ -7,6 +7,7 @@ import {
   notify,
   onFile,
   onIdentity,
+  onConnectError,
   onMessage,
   onPeers,
   onTorError,
@@ -44,6 +45,7 @@ export default function App() {
   const [me, setMe] = useState<Identity | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [torError, setTorError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [threads, setThreads] = useState<Record<string, ChatMessage[]>>(loadThreads);
   const [active, setActive] = useState<string | null>(null);
   const [view, setView] = useState<View>("home");
@@ -95,6 +97,7 @@ export default function App() {
     });
     const unPeers = onPeers(setPeers);
     const unTor = onTorError(setTorError);
+    const unConn = onConnectError(setNotice);
     const unMsg = onMessage((m) => {
       setThreads((t) => append(t, m.peer_id, { text: m.text, ts: m.ts, outgoing: false }));
       const focused = viewRef.current === "messages" && activeRef.current === m.peer_id && !document.hidden;
@@ -115,10 +118,24 @@ export default function App() {
       unId.then((f) => f());
       unPeers.then((f) => f());
       unTor.then((f) => f());
+      unConn.then((f) => f());
       unMsg.then((f) => f());
       unFile.then((f) => f());
     };
   }, []);
+
+  // Clear the "connecting..." notice once a new peer actually shows up, and
+  // auto-dismiss any notice after a while so nothing lingers.
+  const prevPeerCount = useRef(0);
+  useEffect(() => {
+    if (peers.length > prevPeerCount.current) setNotice(null);
+    prevPeerCount.current = peers.length;
+  }, [peers]);
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(null), 12000);
+    return () => clearTimeout(id);
+  }, [notice]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -264,6 +281,7 @@ export default function App() {
   async function handleConnectOnion(onion: string) {
     try {
       await connectOnion(onion);
+      setNotice(t("home.connecting"));
       setView("network");
     } catch (e) {
       alert(t("chat.connectionFailed") + e);
@@ -354,6 +372,10 @@ export default function App() {
 
       {callError && (
         <div className="toast" role="alert" onClick={dismissError}>{callError}</div>
+      )}
+
+      {notice && (
+        <div className="toast" role="status" onClick={() => setNotice(null)}>{notice}</div>
       )}
 
       {cmdOpen && <CommandPalette peers={peers} onClose={() => setCmdOpen(false)} onNavigate={setView} onOpenPeer={selectPeer} />}
