@@ -10,7 +10,8 @@
   --warn: #ff8f6b;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --w: 720px;
+  --w: 700px;     /* comfortable text measure */
+  --wide: 980px;  /* full page width */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,7 +30,7 @@ em { font-style: normal; color: var(--mint); }
 ::selection { background: var(--mint); color: #04110d; }
 
 .bar {
-  max-width: var(--w);
+  max-width: var(--wide);
   margin: 0 auto;
   padding: 26px 22px;
   display: flex;
@@ -42,22 +43,45 @@ em { font-style: normal; color: var(--mint); }
 .dl-link { font-family: var(--mono); font-size: 13.5px; color: var(--mint); }
 .dl-link:hover { text-decoration: underline; }
 
-main { max-width: var(--w); margin: 0 auto; padding: 0 22px; }
+main { max-width: var(--wide); margin: 0 auto; padding: 0 22px; }
 section { padding: 56px 0; }
+/* narrower, left-aligned text blocks for an editorial rhythm against the wide hero/band */
+.prose, .how, .get { max-width: var(--w); }
 
-/* hero */
-.hero { padding-top: 40px; }
+/* hero — two columns on desktop: copy beside the chat skit */
+.hero {
+  padding: 44px 0 64px;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 52px;
+  align-items: center;
+}
 .hero h1 {
-  font-size: clamp(38px, 8vw, 66px);
+  font-size: clamp(36px, 5.2vw, 60px);
   line-height: 1.02;
   letter-spacing: -0.04em;
   font-weight: 720;
 }
-.hero .sub { color: var(--muted); font-size: 18px; margin-top: 22px; max-width: 52ch; }
+.hero .sub { color: var(--muted); font-size: 17.5px; margin-top: 20px; }
+.hero-cta { display: flex; align-items: center; gap: 20px; margin-top: 30px; flex-wrap: wrap; }
+.cta {
+  background: var(--mint);
+  color: #04110d;
+  font-weight: 650;
+  font-size: 15px;
+  padding: 13px 22px;
+  border-radius: 11px;
+  transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
+}
+.cta:hover { transform: translateY(-2px); filter: brightness(1.07); box-shadow: 0 12px 30px rgba(94, 234, 212, 0.22); }
+.cta-ghost { color: var(--muted); font-size: 15px; }
+.cta-ghost:hover { color: var(--mint); }
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 28px; }
+}
 
 /* the chat skit */
 .chat {
-  margin-top: 40px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -103,21 +127,46 @@ section { padding: 56px 0; }
 .msg.leave { align-self: center; max-width: none; background: none; border: none; color: var(--faint); font-family: var(--mono); font-size: 12.5px; padding: 6px 0; }
 .verdict { margin-top: 6px; padding-top: 14px; border-top: 1px dashed var(--line); font-family: var(--mono); font-size: 13px; color: var(--muted); text-align: center; }
 
-/* facts */
-.facts { display: flex; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.facts > div { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 2px; padding: 6px 0; }
-.facts .big { font-size: 46px; font-weight: 720; line-height: 1; letter-spacing: -0.03em; }
-.facts span:last-child { color: var(--muted); font-size: 14.5px; }
+/* facts — full-bleed band that breaks the column for rhythm */
+.facts {
+  width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 44px 24px;
+  display: flex;
+  justify-content: center;
+  gap: 30px 64px;
+  flex-wrap: wrap;
+}
+.facts > div { display: flex; flex-direction: column; gap: 2px; }
+.facts .big { font-size: 62px; font-weight: 760; line-height: 1; letter-spacing: -0.04em; }
+.facts span:last-child { color: var(--muted); font-size: 15px; }
 
 /* prose */
 .prose h2, .how h2, .get h2 { font-size: clamp(24px, 4vw, 32px); letter-spacing: -0.025em; font-weight: 700; margin-bottom: 18px; }
 .prose p, .how p { color: var(--muted); font-size: 17px; margin-bottom: 16px; }
 .prose strong { color: var(--text); font-weight: 650; }
-.prose .aside {
-  border-left: 2px solid var(--mint);
-  padding: 4px 0 4px 18px;
+.pull {
+  font-size: clamp(23px, 3.6vw, 32px);
+  line-height: 1.28;
+  letter-spacing: -0.025em;
   color: var(--text);
-  font-size: 16px;
+  border-left: 3px solid var(--mint);
+  padding: 4px 0 4px 22px;
+  margin: 30px 0;
+  max-width: 20ch;
+}
+.pull cite {
+  display: block;
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--faint);
+  letter-spacing: 0;
+  margin-top: 14px;
 }
 
 /* download */

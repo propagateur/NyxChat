@@ -20,12 +20,18 @@
 
   <main id="top">
     <section class="hero">
-      <h1>Your messages are<br /><em>nobody else's</em> business.</h1>
-      <p class="sub">
-        NyxChat has no server, no account, and nothing in the middle. Your keys stay on your
-        device; you talk straight to the people you trust — on your network or through Tor.
-        Encrypted before a single byte leaves the machine.
-      </p>
+      <div class="hero-copy">
+        <h1>Your messages are<br /><em>nobody else's</em> business.</h1>
+        <p class="sub">
+          NyxChat has no server, no account, and nothing in the middle. Your keys stay on your
+          device; you talk straight to the people you trust — on your network or through Tor.
+          Encrypted before a single byte leaves the machine.
+        </p>
+        <div class="hero-cta">
+          <a class="cta" href="#get">Download — it's free →</a>
+          <a class="cta-ghost" href="#what">Why it's different</a>
+        </div>
+      </div>
 
       <!-- the joke lives here: a "scanner" that finds nothing -->
       <div class="chat" aria-label="A short skit about a message scanner that finds nothing">
@@ -70,11 +76,14 @@
         decides looks suspicious. It's marketed as safety. Cryptographers have a shorter word for
         scanning everyone's messages all the time: <em>surveillance</em>.
       </p>
-      <p class="aside">
-        Hundreds of security researchers signed open letters explaining that you cannot scan
-        encrypted messages without breaking the encryption for everyone. A backdoor doesn't check
-        ID at the door.
+      <p>
+        Hundreds of security researchers have signed open letters explaining that you cannot scan
+        encrypted messages without breaking the encryption for everyone.
       </p>
+      <blockquote class="pull">
+        “A backdoor doesn't check ID at the door.”
+        <cite>— the detail the proposal keeps forgetting</cite>
+      </blockquote>
       <p>
         NyxChat's answer isn't a promise — it's the architecture. There's no company server to hand
         a scanning order to, and your keys never leave your device. We couldn't read your messages
