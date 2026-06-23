@@ -35,6 +35,10 @@ export const onPeers = (cb: (peers: Peer[]) => void): Promise<UnlistenFn> =>
 export const onIdentity = (cb: (id: Identity) => void): Promise<UnlistenFn> =>
   listen<Identity>("identity", (e) => cb(e.payload));
 
+// Émis si Tor échoue à démarrer (binaire manquant, port, bootstrap...).
+export const onTorError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+  listen<string>("tor_error", (e) => cb(e.payload));
+
 export const onMessage = (cb: (msg: IncomingMessage) => void): Promise<UnlistenFn> =>
   listen<IncomingMessage>("message", (e) => cb(e.payload));
 

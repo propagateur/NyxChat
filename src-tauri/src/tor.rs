@@ -41,6 +41,19 @@ pub async fn start(
     let hs_dir = data_dir.join("hs");
     std::fs::create_dir_all(&hs_dir).map_err(|e| e.to_string())?;
 
+    // Tor refuses a HiddenServiceDir whose permissions are group/world
+    // accessible (and warns on the DataDirectory). create_dir_all leaves 0755
+    // on Unix, so without this Tor never publishes the onion service and no
+    // .onion address is produced — this is why it failed on macOS/Linux but
+    // not on Windows (which has no such check).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let private = std::fs::Permissions::from_mode(0o700);
+        let _ = std::fs::set_permissions(data_dir, private.clone());
+        std::fs::set_permissions(&hs_dir, private).map_err(|e| e.to_string())?;
+    }
+
     // On construit via std::process pour pouvoir poser CREATE_NO_WINDOW :
     // tor.exe est une appli console, sans ça Windows ouvre une fenêtre cmd.
     let mut std_cmd = std::process::Command::new(tor_exe);

@@ -11,7 +11,7 @@
 //!
 //! Le média des appels (WebRTC/UDP) ne passe PAS par Tor : il reste en LAN.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,7 +25,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::crypto;
-use crate::net::{Ack, FileSent, IncomingMessage, ReceivedFile, Shared, SignalMsg, Wire, FILE_CHUNK};
+use crate::net::{Ack, FileSent, FileWriter, IncomingMessage, ReceivedFile, Shared, SignalMsg, Wire, FILE_CHUNK};
 use crate::tor;
 
 const SOCKS_PORT: u16 = 19050;
@@ -59,10 +59,9 @@ pub async fn start(
     mut cmd_rx: mpsc::Receiver<TorCmd>,
 ) {
     if !tor_exe.exists() {
-        eprintln!(
-            "[nyx] tor absent ({}) — Tor désactivé. Lance le script fetch-tor approprié",
-            tor_exe.display()
-        );
+        let msg = format!("Tor binary missing ({})", tor_exe.display());
+        eprintln!("[nyx] {msg} — Tor désactivé. Lance le script fetch-tor approprié");
+        let _ = app.emit("tor_error", &msg);
         return;
     }
     let _ = std::fs::create_dir_all(&data_dir);
@@ -70,7 +69,9 @@ pub async fn start(
     let listener = match TcpListener::bind("127.0.0.1:0").await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[nyx] écoute Tor locale impossible : {e}");
+            let msg = format!("could not open a local port for Tor: {e}");
+            eprintln!("[nyx] {msg}");
+            let _ = app.emit("tor_error", &msg);
             return;
         }
     };
@@ -82,7 +83,9 @@ pub async fn start(
     let t = match tor::start(&tor_exe, &data_dir, local_port, SOCKS_PORT).await {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("[nyx] Tor indisponible : {e}");
+            let msg = format!("Tor failed to start: {e}");
+            eprintln!("[nyx] {msg}");
+            let _ = app.emit("tor_error", &msg);
             return;
         }
     };
@@ -236,16 +239,34 @@ async fn send_to(peers: &Peers, id: &str, frame: Frame) {
 
 async fn send_file(peers: &Peers, shared: &Arc<Shared>, secret: &SecretKey, my_pub: [u8; 32], id: &str, path: &Path) -> Result<FileSent, String> {
     let pk = shared.tor_peer_key(id).ok_or("pair Tor inconnu ou hors ligne")?;
-    let data = tokio::fs::read(path).await.map_err(|e| format!("lecture impossible : {e}"))?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("fichier").to_string();
-    let size = data.len() as u64;
-    let chunks = ((data.len() + FILE_CHUNK - 1) / FILE_CHUNK) as u32;
+    // Stream the file from disk in chunks rather than loading it whole.
+    let size = tokio::fs::metadata(path).await.map_err(|e| format!("lecture impossible : {e}"))?.len();
+    let chunks = ((size + FILE_CHUNK as u64 - 1) / FILE_CHUNK as u64) as u32;
     let fid = rand::random::<u64>();
+    let mut file = tokio::fs::File::open(path).await.map_err(|e| format!("lecture impossible : {e}"))?;
 
     send_to(peers, id, Frame::Req(Wire::FileMeta { key: my_pub, id: fid, name: name.clone(), size, chunks })).await;
-    for (seq, chunk) in data.chunks(FILE_CHUNK).enumerate() {
-        let (body, nonce) = crypto::seal(secret, &pk, chunk);
-        send_to(peers, id, Frame::Req(Wire::FileChunk { key: my_pub, id: fid, seq: seq as u32, nonce, body })).await;
+    let mut buf = vec![0u8; FILE_CHUNK];
+    let mut seq = 0u32;
+    loop {
+        let mut filled = 0;
+        while filled < FILE_CHUNK {
+            let n = file.read(&mut buf[filled..]).await.map_err(|e| format!("lecture impossible : {e}"))?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        if filled == 0 {
+            break;
+        }
+        let (body, nonce) = crypto::seal(secret, &pk, &buf[..filled]);
+        send_to(peers, id, Frame::Req(Wire::FileChunk { key: my_pub, id: fid, seq, nonce, body })).await;
+        seq += 1;
+        if filled < FILE_CHUNK {
+            break;
+        }
     }
     Ok(FileSent { name, size, path: path.to_string_lossy().to_string() })
 }
@@ -283,28 +304,13 @@ fn hex(bytes: &[u8; 32]) -> String {
 
 // --- Réception : déchiffrement, events, réassemblage de fichiers -----------
 
-struct FileAsm {
-    from: String,
-    sender_key: PublicKey,
-    name: Option<String>,
-    size: u64,
-    total: Option<u32>,
-    parts: BTreeMap<u32, Vec<u8>>,
-}
-
-impl FileAsm {
-    fn new(from: String, key: [u8; 32]) -> Self {
-        FileAsm { from, sender_key: PublicKey::from(key), name: None, size: 0, total: None, parts: BTreeMap::new() }
-    }
-}
-
 struct Inbox {
     secret: Arc<SecretKey>,
     my_pub: [u8; 32],
     app: AppHandle,
     shared: Arc<Shared>,
     download_dir: PathBuf,
-    files: HashMap<u64, FileAsm>,
+    files: HashMap<u64, FileWriter>,
 }
 
 impl Inbox {
@@ -334,26 +340,24 @@ impl Inbox {
             }
             Wire::FileMeta { key, id: fid, name, size, chunks } => {
                 self.shared.tor_set_key(id.to_string(), key);
-                {
-                    let a = self.files.entry(fid).or_insert_with(|| FileAsm::new(id.to_string(), key));
-                    a.name = Some(name);
-                    a.size = size;
-                    a.total = Some(chunks);
+                if self.ensure_writer(fid) {
+                    if let Some(w) = self.files.get_mut(&fid) {
+                        w.set_meta(name, size, chunks);
+                    }
                 }
-                self.try_finalize(fid);
+                self.try_finalize(fid, id);
                 Ack::Ok
             }
             Wire::FileChunk { key, id: fid, seq, nonce, body } => {
-                let their = {
-                    let a = self.files.entry(fid).or_insert_with(|| FileAsm::new(id.to_string(), key));
-                    a.sender_key.clone()
-                };
-                if let Some(pt) = crypto::open(&self.secret, &their, &nonce, &body) {
-                    if let Some(a) = self.files.get_mut(&fid) {
-                        a.parts.entry(seq).or_insert(pt);
+                self.shared.tor_set_key(id.to_string(), key);
+                if self.ensure_writer(fid) {
+                    if let Some(pt) = crypto::open(&self.secret, &PublicKey::from(key), &nonce, &body) {
+                        if let Some(w) = self.files.get_mut(&fid) {
+                            w.write_chunk(seq, &pt);
+                        }
                     }
                 }
-                self.try_finalize(fid);
+                self.try_finalize(fid, id);
                 Ack::Ok
             }
             Wire::Signal { key, nonce, body } => {
@@ -375,31 +379,37 @@ impl Inbox {
         }
     }
 
-    fn try_finalize(&mut self, fid: u64) {
-        let done = match self.files.get(&fid) {
-            Some(a) => a.total.map_or(false, |t| a.parts.len() as u32 == t),
-            None => false,
-        };
+    fn ensure_writer(&mut self, fid: u64) -> bool {
+        if self.files.contains_key(&fid) {
+            return true;
+        }
+        match FileWriter::open(&self.download_dir, fid) {
+            Ok(w) => {
+                self.files.insert(fid, w);
+                true
+            }
+            Err(e) => {
+                eprintln!("[nyx] fichier Tor : ouverture impossible : {e}");
+                false
+            }
+        }
+    }
+
+    fn try_finalize(&mut self, fid: u64, from: &str) {
+        let done = self.files.get(&fid).map_or(false, |w| w.is_complete());
         if !done {
             return;
         }
-        let a = self.files.remove(&fid).unwrap();
-        let mut data = Vec::with_capacity(a.size as usize);
-        for part in a.parts.values() {
-            data.extend_from_slice(part);
-        }
-        let file_name = a.name.unwrap_or_else(|| format!("nyx-{fid}"));
-        let _ = std::fs::create_dir_all(&self.download_dir);
-        let dest = unique_path(&self.download_dir, &file_name);
-        match std::fs::write(&dest, &data) {
-            Ok(()) => {
+        let writer = self.files.remove(&fid).unwrap();
+        match writer.finalize(&self.download_dir, fid) {
+            Ok((dest, size, file_name)) => {
                 let _ = self.app.emit(
                     "file",
                     ReceivedFile {
-                        peer_id: a.from.clone(),
-                        from_name: self.shared.tor_peer_name(&a.from),
+                        peer_id: from.to_string(),
+                        from_name: self.shared.tor_peer_name(from),
                         file_name,
-                        size: data.len() as u64,
+                        size,
                         path: dest.to_string_lossy().to_string(),
                         ts: now_ms(),
                     },
@@ -407,27 +417,6 @@ impl Inbox {
             }
             Err(e) => eprintln!("[nyx] écriture du fichier Tor échouée : {e}"),
         }
-    }
-}
-
-fn unique_path(dir: &Path, name: &str) -> PathBuf {
-    let first = dir.join(name);
-    if !first.exists() {
-        return first;
-    }
-    let p = Path::new(name);
-    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("fichier");
-    let ext = p.extension().and_then(|s| s.to_str());
-    let mut i = 1;
-    loop {
-        let candidate = match ext {
-            Some(e) => dir.join(format!("{stem} ({i}).{e}")),
-            None => dir.join(format!("{stem} ({i})")),
-        };
-        if !candidate.exists() {
-            return candidate;
-        }
-        i += 1;
     }
 }
 

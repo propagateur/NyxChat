@@ -7,10 +7,11 @@ import Qr from "./Qr";
 interface Props {
   me: Identity | null;
   peers: Peer[];
+  torError?: string | null;
   onConnectOnion: (onion: string) => void;
 }
 
-export default function Home({ me, peers, onConnectOnion }: Props) {
+export default function Home({ me, peers, torError, onConnectOnion }: Props) {
   const [onion, setOnion] = useState("");
   const { t } = useTranslation();
   const online = peers.filter((p) => p.online).length;
@@ -41,6 +42,8 @@ export default function Home({ me, peers, onConnectOnion }: Props) {
                 <Copy size={15} /> {t("home.copy")}
               </button>
             </>
+          ) : torError ? (
+            <div className="onion onion-err" title={torError}>{t("home.torFailed")}: {torError}</div>
           ) : (
             <div className="onion">{t("home.torStarting")}</div>
           )}
@@ -54,14 +57,14 @@ export default function Home({ me, peers, onConnectOnion }: Props) {
               <Globe size={20} />
             </span>
             <div>
-              <div className="stat-val">{me?.onion ? t("home.torActive") : t("home.torBootstrapping")}</div>
+              <div className="stat-val">{me?.onion ? t("home.torActive") : torError ? t("home.torFailed") : t("home.torBootstrapping")}</div>
               <div className="stat-lbl">{t("home.torReachable")}</div>
             </div>
           </div>
           <div style={{ marginTop: 14 }}>
             <span className={"pill" + (me?.onion ? "" : " off")}>
               <span className="led" />
-              {me?.onion ? t("home.torPublished") : t("home.torBootstrap")}
+              {me?.onion ? t("home.torPublished") : torError ? t("home.torFailed") : t("home.torBootstrap")}
             </span>
           </div>
         </section>

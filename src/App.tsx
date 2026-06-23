@@ -9,6 +9,7 @@ import {
   onIdentity,
   onMessage,
   onPeers,
+  onTorError,
   pickFile,
   sendFile,
   sendMessage,
@@ -42,6 +43,7 @@ export default function App() {
   const { t } = useTranslation();
   const [me, setMe] = useState<Identity | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
+  const [torError, setTorError] = useState<string | null>(null);
   const [threads, setThreads] = useState<Record<string, ChatMessage[]>>(loadThreads);
   const [active, setActive] = useState<string | null>(null);
   const [view, setView] = useState<View>("home");
@@ -87,8 +89,12 @@ export default function App() {
     getIdentity().then(setMe).catch(console.error);
     listPeers().then(setPeers).catch(console.error);
 
-    const unId = onIdentity(setMe);
+    const unId = onIdentity((id) => {
+      setMe(id);
+      if (id.onion) setTorError(null);
+    });
     const unPeers = onPeers(setPeers);
+    const unTor = onTorError(setTorError);
     const unMsg = onMessage((m) => {
       setThreads((t) => append(t, m.peer_id, { text: m.text, ts: m.ts, outgoing: false }));
       const focused = viewRef.current === "messages" && activeRef.current === m.peer_id && !document.hidden;
@@ -108,6 +114,7 @@ export default function App() {
     return () => {
       unId.then((f) => f());
       unPeers.then((f) => f());
+      unTor.then((f) => f());
       unMsg.then((f) => f());
       unFile.then((f) => f());
     };
@@ -287,7 +294,7 @@ export default function App() {
       <Rail view={view} onView={setView} unreadCount={totalUnread} />
 
       <div className="surface">
-        {view === "home" && <Home me={me} peers={peers} onConnectOnion={handleConnectOnion} />}
+        {view === "home" && <Home me={me} peers={peers} torError={torError} onConnectOnion={handleConnectOnion} />}
 
         {view === "messages" && (
           <>

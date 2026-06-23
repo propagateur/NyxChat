@@ -6,7 +6,7 @@
 //! parle via un canal de commandes et reçoit les nouveautés via les events
 //! Tauri. Ça évite d'avoir à rendre le Swarm partageable entre threads.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -272,25 +272,65 @@ pub enum Command {
 
 // --- Réassemblage d'un fichier en cours de réception ----------------------
 
-struct FileAsm {
-    from: PeerId,
-    sender_key: PublicKey,
+/// Streams an incoming file straight to disk instead of buffering every chunk
+/// in memory, so transfers are bounded by disk, not RAM (sending large
+/// archives like .zip/.rar no longer risks running the app out of memory).
+/// Shared by both transports (libp2p and Tor).
+pub(crate) struct FileWriter {
+    file: fs::File,
+    temp_path: PathBuf,
     name: Option<String>,
     size: u64,
     total: Option<u32>,
-    parts: BTreeMap<u32, Vec<u8>>,
+    seen: HashSet<u32>,
 }
 
-impl FileAsm {
-    fn new(from: PeerId, key: [u8; 32]) -> Self {
-        FileAsm {
-            from,
-            sender_key: PublicKey::from(key),
-            name: None,
-            size: 0,
-            total: None,
-            parts: BTreeMap::new(),
+impl FileWriter {
+    /// Open a hidden `.part` file in `download_dir` for the transfer `id`.
+    pub(crate) fn open(download_dir: &Path, id: u64) -> std::io::Result<Self> {
+        fs::create_dir_all(download_dir)?;
+        let temp_path = download_dir.join(format!(".nyx-{id}.part"));
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(true)
+            .open(&temp_path)?;
+        Ok(FileWriter { file, temp_path, name: None, size: 0, total: None, seen: HashSet::new() })
+    }
+
+    pub(crate) fn set_meta(&mut self, name: String, size: u64, total: u32) {
+        self.name = Some(name);
+        self.size = size;
+        self.total = Some(total);
+    }
+
+    /// Write one decrypted chunk at its position. Duplicates are ignored.
+    pub(crate) fn write_chunk(&mut self, seq: u32, data: &[u8]) {
+        use std::io::{Seek, SeekFrom, Write};
+        if self.seen.contains(&seq) {
+            return;
         }
+        let offset = seq as u64 * FILE_CHUNK as u64;
+        if self.file.seek(SeekFrom::Start(offset)).and_then(|_| self.file.write_all(data)).is_ok() {
+            self.seen.insert(seq);
+        }
+    }
+
+    pub(crate) fn is_complete(&self) -> bool {
+        self.total.map_or(false, |t| self.seen.len() as u32 == t)
+    }
+
+    /// Flush, close and move the `.part` file to a final unique path in
+    /// `download_dir`. Returns the destination path, size and file name.
+    pub(crate) fn finalize(mut self, download_dir: &Path, id: u64) -> std::io::Result<(PathBuf, u64, String)> {
+        use std::io::Write;
+        let _ = self.file.flush();
+        drop(self.file);
+        let name = self.name.unwrap_or_else(|| format!("nyx-{id}"));
+        let dest = unique_path(download_dir, &name);
+        fs::rename(&self.temp_path, &dest)?;
+        Ok((dest, self.size, name))
     }
 }
 
@@ -418,7 +458,7 @@ struct Ctx {
     my_pub: [u8; 32],
     local: PeerId,
     dialed: HashSet<PeerId>,
-    incoming: HashMap<u64, FileAsm>,
+    incoming: HashMap<u64, FileWriter>,
     download_dir: PathBuf,
 }
 
@@ -461,26 +501,38 @@ impl Ctx {
 
     fn send_file(&mut self, swarm: &mut Swarm<Behaviour>, peer: &PeerId, path: &Path) -> Result<FileSent, String> {
         let pk = self.shared.peer_key(peer).ok_or("clé du pair pas encore échangée")?;
-        let data = fs::read(path).map_err(|e| format!("lecture impossible : {e}"))?;
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("fichier")
             .to_string();
-        let size = data.len() as u64;
-        let chunks = ((data.len() + FILE_CHUNK - 1) / FILE_CHUNK) as u32;
+        // Read the file chunk by chunk from disk rather than loading it whole,
+        // so even very large archives don't have to fit in memory.
+        let size = fs::metadata(path).map_err(|e| format!("lecture impossible : {e}"))?.len();
+        let chunks = ((size + FILE_CHUNK as u64 - 1) / FILE_CHUNK as u64) as u32;
         let id = OsRng.next_u64();
+        let mut file = fs::File::open(path).map_err(|e| format!("lecture impossible : {e}"))?;
 
         swarm.behaviour_mut().rr.send_request(
             peer,
             Wire::FileMeta { key: self.my_pub, id, name: name.clone(), size, chunks },
         );
-        for (seq, chunk) in data.chunks(FILE_CHUNK).enumerate() {
-            let (body, nonce) = crypto::seal(&self.secret, &pk, chunk);
+        let mut buf = vec![0u8; FILE_CHUNK];
+        let mut seq = 0u32;
+        loop {
+            let filled = read_chunk(&mut file, &mut buf).map_err(|e| format!("lecture impossible : {e}"))?;
+            if filled == 0 {
+                break;
+            }
+            let (body, nonce) = crypto::seal(&self.secret, &pk, &buf[..filled]);
             swarm.behaviour_mut().rr.send_request(
                 peer,
-                Wire::FileChunk { key: self.my_pub, id, seq: seq as u32, nonce, body },
+                Wire::FileChunk { key: self.my_pub, id, seq, nonce, body },
             );
+            seq += 1;
+            if filled < FILE_CHUNK {
+                break;
+            }
         }
         Ok(FileSent { name, size, path: path.to_string_lossy().to_string() })
     }
@@ -585,31 +637,29 @@ impl Ctx {
 
             Wire::FileMeta { key, id, name, size, chunks } => {
                 self.shared.set_key(peer, key);
-                {
-                    let asm = self.incoming.entry(id).or_insert_with(|| FileAsm::new(peer, key));
-                    asm.name = Some(name);
-                    asm.size = size;
-                    asm.total = Some(chunks);
+                if self.ensure_writer(id) {
+                    if let Some(w) = self.incoming.get_mut(&id) {
+                        w.set_meta(name, size, chunks);
+                    }
                 }
                 let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
-                self.try_finalize(id); // cas fichier vide (0 morceau)
+                self.try_finalize(id, peer); // cas fichier vide (0 morceau)
             }
 
             Wire::FileChunk { key, id, seq, nonce, body } => {
-                let their = {
-                    let asm = self.incoming.entry(id).or_insert_with(|| FileAsm::new(peer, key));
-                    asm.sender_key.clone()
-                };
-                match crypto::open(&self.secret, &their, &nonce, &body) {
-                    Some(pt) => {
-                        if let Some(asm) = self.incoming.get_mut(&id) {
-                            asm.parts.entry(seq).or_insert(pt);
+                self.shared.set_key(peer, key);
+                if self.ensure_writer(id) {
+                    match crypto::open(&self.secret, &PublicKey::from(key), &nonce, &body) {
+                        Some(pt) => {
+                            if let Some(w) = self.incoming.get_mut(&id) {
+                                w.write_chunk(seq, &pt);
+                            }
                         }
+                        None => eprintln!("[nyx] morceau de fichier de {peer} indéchiffrable"),
                     }
-                    None => eprintln!("[nyx] morceau de fichier de {peer} indéchiffrable"),
                 }
                 let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
-                self.try_finalize(id);
+                self.try_finalize(id, peer);
             }
 
             Wire::Signal { key, nonce, body } => {
@@ -627,34 +677,39 @@ impl Ctx {
 
     /// Si tous les morceaux sont là, on recolle, on écrit dans Téléchargements
     /// et on prévient le front.
-    fn try_finalize(&mut self, id: u64) {
-        let done = match self.incoming.get(&id) {
-            Some(a) => a.total.map_or(false, |t| a.parts.len() as u32 == t),
-            None => false,
-        };
+    /// Make sure a `FileWriter` exists for this transfer; returns false if the
+    /// destination file could not be opened.
+    fn ensure_writer(&mut self, id: u64) -> bool {
+        if self.incoming.contains_key(&id) {
+            return true;
+        }
+        match FileWriter::open(&self.download_dir, id) {
+            Ok(w) => {
+                self.incoming.insert(id, w);
+                true
+            }
+            Err(e) => {
+                eprintln!("[nyx] fichier reçu : ouverture impossible : {e}");
+                false
+            }
+        }
+    }
+
+    fn try_finalize(&mut self, id: u64, from: PeerId) {
+        let done = self.incoming.get(&id).map_or(false, |w| w.is_complete());
         if !done {
             return;
         }
-        let asm = self.incoming.remove(&id).unwrap();
-
-        let mut data = Vec::with_capacity(asm.size as usize);
-        for part in asm.parts.values() {
-            data.extend_from_slice(part);
-        }
-
-        let file_name = asm.name.unwrap_or_else(|| format!("nyx-{id}"));
-        let _ = fs::create_dir_all(&self.download_dir);
-        let dest = unique_path(&self.download_dir, &file_name);
-
-        match fs::write(&dest, &data) {
-            Ok(()) => {
+        let writer = self.incoming.remove(&id).unwrap();
+        match writer.finalize(&self.download_dir, id) {
+            Ok((dest, size, file_name)) => {
                 let _ = self.app.emit(
                     "file",
                     ReceivedFile {
-                        peer_id: asm.from.to_string(),
-                        from_name: self.shared.peer_name(&asm.from),
+                        peer_id: from.to_string(),
+                        from_name: self.shared.peer_name(&from),
                         file_name,
-                        size: data.len() as u64,
+                        size,
                         path: dest.to_string_lossy().to_string(),
                         ts: now_ms(),
                     },
@@ -663,6 +718,21 @@ impl Ctx {
             Err(e) => eprintln!("[nyx] écriture du fichier reçu échouée : {e}"),
         }
     }
+}
+
+/// Read up to `buf.len()` bytes, looping over short reads. Returns the number
+/// of bytes read (0 at end of file).
+fn read_chunk(file: &mut fs::File, buf: &mut [u8]) -> std::io::Result<usize> {
+    use std::io::Read;
+    let mut filled = 0;
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(filled)
 }
 
 /// Évite d'écraser un fichier existant : `photo.png` → `photo (1).png`, etc.
