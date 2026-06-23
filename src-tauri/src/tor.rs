@@ -12,12 +12,13 @@
 
 use std::path::Path;
 use std::process::Stdio;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
-use tokio::time::timeout;
+use tokio::time::sleep;
 
 /// Port "virtuel" du service onion (côté Tor). Il est redirigé vers notre écoute
 /// locale en clair sur 127.0.0.1.
@@ -68,7 +69,8 @@ pub async fn start(
         .arg(format!("{VIRTUAL_PORT} 127.0.0.1:{local_port}"))
         .arg("--Log")
         .arg("notice stdout")
-        .stdout(Stdio::piped());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -78,33 +80,66 @@ pub async fn start(
     let mut child = Command::from(std_cmd)
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("lancement de Tor impossible : {e}"))?;
+        .map_err(|e| format!("could not launch Tor: {e}"))?;
 
-    // Tor peut être lent à s'amorcer : on attend la ligne "Bootstrapped 100%".
-    let stdout = child.stdout.take().ok_or("pas de sortie standard de Tor")?;
-    let mut lines = BufReader::new(stdout).lines();
-    let ready = timeout(Duration::from_secs(120), async {
-        while let Ok(Some(line)) = lines.next_line().await {
-            if line.contains("Bootstrapped 100%") {
-                return true;
-            }
-        }
-        false
-    })
-    .await
-    .map_err(|_| "Tor n'a pas fini de démarrer dans le temps imparti".to_string())?;
-
-    if !ready {
-        return Err("Tor s'est arrêté avant d'être prêt".into());
+    // Continuously drain stdout AND stderr into a small ring buffer. This both
+    // keeps Tor from blocking on a full pipe (which would freeze it) and gives
+    // us its recent output to report if startup fails.
+    let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    if let Some(out) = child.stdout.take() {
+        drain(out, log.clone());
+    }
+    if let Some(err) = child.stderr.take() {
+        drain(err, log.clone());
     }
 
-    // Tor écrit l'adresse publique du service dans hs/hostname.
-    let onion = std::fs::read_to_string(hs_dir.join("hostname"))
-        .map_err(|e| format!("adresse onion introuvable : {e}"))?
-        .trim()
-        .to_string();
+    // Tor writes the onion address to hs/hostname as soon as it sets up the
+    // hidden service — early, before bootstrap finishes. Poll for that file
+    // instead of parsing the log for "Bootstrapped 100%", which is unreliable
+    // over a pipe (buffering/redirection) and was leaving the app stuck on
+    // "Tor is starting" forever even though Tor was running fine.
+    let hostname_path = hs_dir.join("hostname");
+    let deadline = Instant::now() + Duration::from_secs(90);
+    loop {
+        if let Ok(s) = std::fs::read_to_string(&hostname_path) {
+            let onion = s.trim().to_string();
+            if !onion.is_empty() {
+                return Ok(Tor { _child: child, onion, socks_port });
+            }
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("Tor exited early ({status}). {}", recent(&log)));
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("Tor did not publish an onion address in time. {}", recent(&log)));
+        }
+        sleep(Duration::from_millis(300)).await;
+    }
+}
 
-    Ok(Tor { _child: child, onion, socks_port })
+/// Spawn a task that reads a child stream line by line into a capped ring buffer.
+fn drain<R>(stream: R, log: Arc<Mutex<Vec<String>>>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stream).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let mut g = log.lock().unwrap();
+            g.push(line);
+            let n = g.len();
+            if n > 80 {
+                g.drain(0..n - 80);
+            }
+        }
+    });
+}
+
+/// The last few captured Tor output lines, for error messages.
+fn recent(log: &Arc<Mutex<Vec<String>>>) -> String {
+    let g = log.lock().unwrap();
+    let start = g.len().saturating_sub(8);
+    g[start..].join(" | ")
 }
 
 /// Ouvre une connexion TCP vers `onion` à travers le proxy SOCKS5 de Tor.
