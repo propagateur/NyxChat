@@ -93,25 +93,36 @@ pub async fn start(
         drain(err, log.clone());
     }
 
-    // Tor writes the onion address to hs/hostname as soon as it sets up the
-    // hidden service — early, before bootstrap finishes. Poll for that file
-    // instead of parsing the log for "Bootstrapped 100%", which is unreliable
-    // over a pipe (buffering/redirection) and was leaving the app stuck on
-    // "Tor is starting" forever even though Tor was running fine.
+    // Ready means two things: we know our onion address (Tor writes it to
+    // hs/hostname early) AND Tor has actually bootstrapped — otherwise it can
+    // neither reach peers nor publish our hidden service, even though the
+    // address already exists (it persists across runs). We scan the drained
+    // log buffer for "Bootstrapped 100%": reliable now that both streams are
+    // continuously drained, unlike reading the raw pipe directly.
     let hostname_path = hs_dir.join("hostname");
-    let deadline = Instant::now() + Duration::from_secs(90);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut onion = String::new();
     loop {
-        if let Ok(s) = std::fs::read_to_string(&hostname_path) {
-            let onion = s.trim().to_string();
-            if !onion.is_empty() {
-                return Ok(Tor { _child: child, onion, socks_port });
+        if onion.is_empty() {
+            if let Ok(s) = std::fs::read_to_string(&hostname_path) {
+                let s = s.trim().to_string();
+                if !s.is_empty() {
+                    onion = s;
+                }
             }
+        }
+        let bootstrapped = {
+            let g = log.lock().unwrap();
+            g.iter().any(|l| l.contains("Bootstrapped 100%"))
+        };
+        if bootstrapped && !onion.is_empty() {
+            return Ok(Tor { _child: child, onion, socks_port });
         }
         if let Ok(Some(status)) = child.try_wait() {
             return Err(format!("Tor exited early ({status}). {}", recent(&log)));
         }
         if Instant::now() >= deadline {
-            return Err(format!("Tor did not publish an onion address in time. {}", recent(&log)));
+            return Err(format!("Tor didn't finish bootstrapping in time. {}", recent(&log)));
         }
         sleep(Duration::from_millis(300)).await;
     }
