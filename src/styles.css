@@ -981,6 +981,21 @@ button {
 .field input.text:focus {
   border-color: var(--accent);
 }
+.field select.text {
+  width: 100%;
+  max-width: 340px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 11px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 11px 13px;
+  outline: none;
+  cursor: pointer;
+}
+.field select.text:focus {
+  border-color: var(--accent);
+}
 .accents {
   display: flex;
   gap: 12px;

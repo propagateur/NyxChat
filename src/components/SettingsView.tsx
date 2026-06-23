@@ -4,7 +4,7 @@ import type { Theme } from "../theme";
 import { ACCENTS } from "../theme";
 import { loadTurn, saveTurn } from "../calls";
 import { Check } from "../icons";
-import { useTranslation } from "../i18n";
+import { useTranslation, LANGS, type Lang } from "../i18n";
 
 interface Props {
   me: Identity | null;
@@ -48,10 +48,11 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
 
       <div className="field">
         <label>{t("settings.language")}</label>
-        <div className="seg">
-          <button className={lang === "en" ? "on" : ""} onClick={() => setLanguage("en")}>English</button>
-          <button className={lang === "fr" ? "on" : ""} onClick={() => setLanguage("fr")}>Francais</button>
-        </div>
+        <select className="text select" value={lang} onChange={(e) => setLanguage(e.target.value as Lang)}>
+          {LANGS.map((l) => (
+            <option key={l.code} value={l.code}>{l.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="field">
