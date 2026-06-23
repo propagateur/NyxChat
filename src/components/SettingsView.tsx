@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Accent, Identity } from "../types";
 import type { Theme } from "../theme";
 import { ACCENTS } from "../theme";
+import { loadTurn, saveTurn } from "../calls";
 import { Check } from "../icons";
 import { useTranslation } from "../i18n";
 
@@ -18,7 +19,16 @@ interface Props {
 
 export default function SettingsView({ me, accent, theme, keepHistory, onRename, onAccent, onTheme, onKeepHistory }: Props) {
   const [name, setName] = useState(me?.name ?? "");
+  const [turn, setTurn] = useState(loadTurn);
   const { lang, setLanguage, t } = useTranslation();
+
+  function updateTurn(patch: Partial<typeof turn>) {
+    setTurn((prev) => {
+      const next = { ...prev, ...patch };
+      saveTurn(next);
+      return next;
+    });
+  }
 
   return (
     <div className="settings view">
@@ -73,6 +83,34 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
         <p className="hint" style={{ marginTop: 8 }}>
           {keepHistory ? t("settings.historyOn") : t("settings.historyOff")}
         </p>
+      </div>
+
+      <div className="field">
+        <label>{t("settings.calls")}</label>
+        <input
+          className="text"
+          value={turn.url}
+          placeholder={t("settings.turnUrlPlaceholder")}
+          onChange={(e) => updateTurn({ url: e.target.value })}
+        />
+        <div className="turn-creds">
+          <input
+            className="text"
+            value={turn.username}
+            placeholder={t("settings.turnUser")}
+            autoComplete="off"
+            onChange={(e) => updateTurn({ username: e.target.value })}
+          />
+          <input
+            className="text"
+            type="password"
+            value={turn.credential}
+            placeholder={t("settings.turnPass")}
+            autoComplete="off"
+            onChange={(e) => updateTurn({ credential: e.target.value })}
+          />
+        </div>
+        <p className="hint" style={{ marginTop: 8 }}>{t("settings.turnHint")}</p>
       </div>
 
       <div className="field">

@@ -65,7 +65,7 @@ export default function App() {
   const [pinned, setPinned] = useState<Set<string>>(() => loadSet("nyx.pinned"));
   const [muted, setMuted] = useState<Set<string>>(() => loadSet("nyx.muted"));
 
-  const { call, startCall, acceptCall, hangup, toggleMute, toggleCam } = useCall();
+  const { call, callError, startCall, acceptCall, hangup, toggleMute, toggleCam, dismissError } = useCall();
 
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -343,6 +343,10 @@ export default function App() {
 
       {call && (
         <Call call={call} peerName={callPeerName} onAccept={acceptCall} onHangup={hangup} onToggleMute={toggleMute} onToggleCam={toggleCam} />
+      )}
+
+      {callError && (
+        <div className="toast" role="alert" onClick={dismissError}>{callError}</div>
       )}
 
       {cmdOpen && <CommandPalette peers={peers} onClose={() => setCmdOpen(false)} onNavigate={setView} onOpenPeer={selectPeer} />}

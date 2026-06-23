@@ -1457,3 +1457,34 @@ button {
   color: var(--text-3);
   flex: none;
 }
+
+/* TURN credentials (username / password) side by side */
+.turn-creds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  max-width: 340px;
+}
+.turn-creds input.text {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* Transient toast for call errors (no answer, connection failed) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 95;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-size: 14px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  animation: viewIn 0.2s var(--ease);
+}

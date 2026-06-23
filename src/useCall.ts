@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onSignal, sendSignal } from "./api";
+import { buildIceServers } from "./calls";
+import { useTranslation } from "./i18n";
 
 // Messages échangés sur le canal de signalisation (sérialisés en JSON).
 type Sig =
@@ -18,19 +20,17 @@ export interface CallState {
   camOff: boolean;
 }
 
-// STUN public pour découvrir l'adresse publique et traverser les NAT courants.
-// En LAN, les candidats "host" se connectent en direct sans rien demander.
-// Le média reste toujours en pair-à-pair — STUN ne sert qu'à la mise en relation.
-// (Pour un NAT symétrique, ajouter un serveur TURN ici.)
-const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ],
-};
+// ICE servers (STUN + optional user TURN) are built fresh per call, see calls.ts.
+
+// How long an unanswered call rings before it is abandoned (ms).
+const RING_MS = 35000;
+// How long the "failed/no answer" banner stays visible (ms).
+const ERROR_MS = 5000;
 
 export function useCall() {
+  const { t } = useTranslation();
   const [call, setCall] = useState<CallState | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
 
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
@@ -39,17 +39,41 @@ export function useCall() {
   // Miroir synchrone de `call` pour les handlers d'events (closures).
   const callRef = useRef<CallState | null>(null);
   callRef.current = call;
+  // True when we initiated the call: only the caller drives ICE restarts.
+  const isCaller = useRef(false);
+  // Ring/answer timeout and a guard so we only ICE-restart once.
+  const ringTimer = useRef<number | null>(null);
+  const errorTimer = useRef<number | null>(null);
+  const restarted = useRef(false);
+
+  const clearRing = () => {
+    if (ringTimer.current !== null) {
+      clearTimeout(ringTimer.current);
+      ringTimer.current = null;
+    }
+  };
+
+  const showError = useCallback((msg: string) => {
+    setCallError(msg);
+    if (errorTimer.current !== null) clearTimeout(errorTimer.current);
+    errorTimer.current = window.setTimeout(() => setCallError(null), ERROR_MS);
+  }, []);
+
+  const dismissError = useCallback(() => setCallError(null), []);
 
   const send = (peerId: string, sig: Sig) =>
     sendSignal(peerId, JSON.stringify(sig)).catch((e) => console.error("signal:", e));
 
   const cleanup = useCallback(() => {
+    clearRing();
     pc.current?.close();
     pc.current = null;
     localStream.current?.getTracks().forEach((t) => t.stop());
     localStream.current = null;
     pendingIce.current = [];
     pendingOffer.current = null;
+    isCaller.current = false;
+    restarted.current = false;
     setCall(null);
   }, []);
 
@@ -64,9 +88,28 @@ export function useCall() {
     pendingIce.current = [];
   };
 
+  // Caller-side ICE restart: if the connection drops, renegotiate once with a
+  // fresh ICE gathering instead of dropping the call outright.
+  const tryIceRestart = useCallback((conn: RTCPeerConnection, peerId: string, video: boolean) => {
+    if (restarted.current || !isCaller.current) return;
+    restarted.current = true;
+    window.setTimeout(async () => {
+      if (pc.current !== conn) return;
+      const ice = conn.iceConnectionState;
+      if (ice !== "disconnected" && ice !== "failed") return;
+      try {
+        const offer = await conn.createOffer({ iceRestart: true });
+        await conn.setLocalDescription(offer);
+        send(peerId, { kind: "offer", sdp: offer.sdp!, video });
+      } catch (e) {
+        console.error("ice restart:", e);
+      }
+    }, 2000);
+  }, []);
+
   const newPc = useCallback(
-    (peerId: string) => {
-      const conn = new RTCPeerConnection(RTC_CONFIG);
+    (peerId: string, video: boolean) => {
+      const conn = new RTCPeerConnection({ iceServers: buildIceServers() });
       conn.onicecandidate = (e) => {
         if (e.candidate) send(peerId, { kind: "ice", candidate: e.candidate.toJSON() });
       };
@@ -77,15 +120,27 @@ export function useCall() {
       conn.onconnectionstatechange = () => {
         const st = conn.connectionState;
         if (st === "connected") {
+          clearRing();
+          restarted.current = false;
           setCall((c) => (c ? { ...c, status: "connected" } : c));
-        } else if (st === "failed" || st === "closed") {
+        } else if (st === "failed") {
+          if (callRef.current?.peerId === peerId) {
+            showError(t("call.failed"));
+            cleanup();
+          }
+        } else if (st === "closed") {
           if (callRef.current?.peerId === peerId) cleanup();
+        }
+      };
+      conn.oniceconnectionstatechange = () => {
+        if (conn.iceConnectionState === "disconnected" && callRef.current?.peerId === peerId) {
+          tryIceRestart(conn, peerId, video);
         }
       };
       pc.current = conn;
       return conn;
     },
-    [cleanup]
+    [cleanup, showError, t, tryIceRestart]
   );
 
   const getMedia = (video: boolean) =>
@@ -105,28 +160,40 @@ export function useCall() {
       if (callRef.current) return;
       try {
         const stream = await getMedia(video);
+        isCaller.current = true;
         setCall({ peerId, status: "calling", video, local: stream, remote: null, muted: false, camOff: false });
-        const conn = newPc(peerId);
+        const conn = newPc(peerId, video);
         stream.getTracks().forEach((t) => conn.addTrack(t, stream));
         const offer = await conn.createOffer();
         await conn.setLocalDescription(offer);
         send(peerId, { kind: "offer", sdp: offer.sdp!, video });
+        // Give up if the peer never answers.
+        clearRing();
+        ringTimer.current = window.setTimeout(() => {
+          if (callRef.current?.peerId === peerId && callRef.current.status === "calling") {
+            send(peerId, { kind: "bye" });
+            showError(t("call.noAnswer"));
+            cleanup();
+          }
+        }, RING_MS);
       } catch (e) {
         console.error("startCall:", e);
         cleanup();
         throw e;
       }
     },
-    [newPc, cleanup]
+    [newPc, cleanup, showError, t]
   );
 
   const acceptCall = useCallback(async () => {
     const inc = pendingOffer.current;
     if (!inc) return;
+    clearRing();
     try {
       const stream = await getMedia(inc.video);
+      isCaller.current = false;
       setCall({ peerId: inc.peerId, status: "calling", video: inc.video, local: stream, remote: null, muted: false, camOff: false });
-      const conn = newPc(inc.peerId);
+      const conn = newPc(inc.peerId, inc.video);
       stream.getTracks().forEach((t) => conn.addTrack(t, stream));
       await conn.setRemoteDescription({ type: "offer", sdp: inc.sdp });
       await flushIce(conn);
@@ -169,13 +236,35 @@ export function useCall() {
 
       switch (sig.kind) {
         case "offer": {
-          // Déjà occupé ? on décline poliment.
+          // Renegotiation (e.g. ICE restart) from the peer we are already
+          // connected to: answer on the existing connection, no new call.
+          if (conn && callRef.current?.peerId === peer_id && callRef.current.status === "connected") {
+            try {
+              await conn.setRemoteDescription({ type: "offer", sdp: sig.sdp });
+              await flushIce(conn);
+              const answer = await conn.createAnswer();
+              await conn.setLocalDescription(answer);
+              send(peer_id, { kind: "answer", sdp: answer.sdp! });
+            } catch (e) {
+              console.error("renegotiate:", e);
+            }
+            return;
+          }
+          // Déjà occupé avec quelqu'un d'autre ? on décline poliment.
           if (callRef.current || pendingOffer.current) {
             send(peer_id, { kind: "bye" });
             return;
           }
           pendingOffer.current = { peerId: peer_id, sdp: sig.sdp, video: sig.video };
           setCall({ peerId: peer_id, status: "incoming", video: sig.video, local: null, remote: null, muted: false, camOff: false });
+          // Auto-decline a call that is never picked up.
+          clearRing();
+          ringTimer.current = window.setTimeout(() => {
+            if (pendingOffer.current?.peerId === peer_id) {
+              send(peer_id, { kind: "bye" });
+              cleanup();
+            }
+          }, RING_MS);
           break;
         }
         case "answer": {
@@ -211,5 +300,5 @@ export function useCall() {
     };
   }, [cleanup]);
 
-  return { call, startCall, acceptCall, hangup, toggleMute, toggleCam };
+  return { call, callError, startCall, acceptCall, hangup, toggleMute, toggleCam, dismissError };
 }
