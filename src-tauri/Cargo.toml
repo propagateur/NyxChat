@@ -1,6 +1,6 @@
 [package]
 name = "nyxchat"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 description = "End-to-end encrypted peer-to-peer messenger"
 license = "MIT"
