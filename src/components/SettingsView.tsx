@@ -3,6 +3,7 @@ import type { Accent, Identity } from "../types";
 import type { Theme } from "../theme";
 import { ACCENTS } from "../theme";
 import { loadTurn, saveTurn } from "../calls";
+import { loadDevices, saveDevices, useMediaDevices, outputSelectable } from "../devices";
 import { Check } from "../icons";
 import { useTranslation, LANGS, type Lang } from "../i18n";
 
@@ -20,12 +21,22 @@ interface Props {
 export default function SettingsView({ me, accent, theme, keepHistory, onRename, onAccent, onTheme, onKeepHistory }: Props) {
   const [name, setName] = useState(me?.name ?? "");
   const [turn, setTurn] = useState(loadTurn);
+  const [devicePrefs, setDevicePrefs] = useState(loadDevices);
+  const { devices, hasLabels, requestAccess } = useMediaDevices();
   const { lang, setLanguage, t } = useTranslation();
 
   function updateTurn(patch: Partial<typeof turn>) {
     setTurn((prev) => {
       const next = { ...prev, ...patch };
       saveTurn(next);
+      return next;
+    });
+  }
+
+  function updateDevices(patch: Partial<typeof devicePrefs>) {
+    setDevicePrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveDevices(next);
       return next;
     });
   }
@@ -112,6 +123,42 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
           />
         </div>
         <p className="hint" style={{ marginTop: 8 }}>{t("settings.turnHint")}</p>
+      </div>
+
+      <div className="field">
+        <label>{t("settings.devices")}</label>
+        <div className="device-select">
+          <span className="device-label">{t("settings.micInput")}</span>
+          <select className="text select" value={devicePrefs.audioIn} onChange={(e) => updateDevices({ audioIn: e.target.value })}>
+            <option value="">{t("settings.deviceDefault")}</option>
+            {devices.audioIn.map((d, i) => (
+              <option key={d.deviceId} value={d.deviceId}>{d.label || `${t("settings.micInput")} ${i + 1}`}</option>
+            ))}
+          </select>
+        </div>
+        <div className="device-select">
+          <span className="device-label">{t("settings.cameraInput")}</span>
+          <select className="text select" value={devicePrefs.videoIn} onChange={(e) => updateDevices({ videoIn: e.target.value })}>
+            <option value="">{t("settings.deviceDefault")}</option>
+            {devices.videoIn.map((d, i) => (
+              <option key={d.deviceId} value={d.deviceId}>{d.label || `${t("settings.cameraInput")} ${i + 1}`}</option>
+            ))}
+          </select>
+        </div>
+        {outputSelectable && (
+          <div className="device-select">
+            <span className="device-label">{t("settings.audioOutput")}</span>
+            <select className="text select" value={devicePrefs.audioOut} onChange={(e) => updateDevices({ audioOut: e.target.value })}>
+              <option value="">{t("settings.deviceDefault")}</option>
+              {devices.audioOut.map((d, i) => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `${t("settings.audioOutput")} ${i + 1}`}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {!hasLabels && (
+          <button className="device-enable" onClick={requestAccess}>{t("settings.enableDevices")}</button>
+        )}
       </div>
 
       <div className="field">

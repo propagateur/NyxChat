@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { CallState } from "../useCall";
+import { applyOutput } from "../devices";
 import { avatarStyle } from "../util";
 import { Mic, MicOff, Phone, PhoneDown, Video } from "../icons";
 import { useTranslation } from "../i18n";
@@ -22,7 +23,10 @@ export default function Call({ call, peerName, onAccept, onHangup, onToggleMute,
     if (localVid.current) localVid.current.srcObject = call.local;
   }, [call.local]);
   useEffect(() => {
-    if (remoteVid.current) remoteVid.current.srcObject = call.remote;
+    if (remoteVid.current) {
+      remoteVid.current.srcObject = call.remote;
+      applyOutput(remoteVid.current);
+    }
   }, [call.remote]);
 
   const ini = peerName.slice(0, 1).toUpperCase();

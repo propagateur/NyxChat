@@ -996,6 +996,36 @@ button {
 .field select.text:focus {
   border-color: var(--accent);
 }
+.device-select {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  max-width: 460px;
+}
+.device-select .device-label {
+  flex: none;
+  width: 96px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.device-select select.text {
+  flex: 1;
+  max-width: none;
+}
+.device-enable {
+  margin-top: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.device-enable:hover {
+  border-color: var(--accent);
+}
 .accents {
   display: flex;
   gap: 12px;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onSignal, sendSignal } from "./api";
 import { buildIceServers } from "./calls";
+import { getUserMediaWithPrefs } from "./devices";
 import { useTranslation } from "./i18n";
 
 // Messages échangés sur le canal de signalisation (sérialisés en JSON).
@@ -144,7 +145,7 @@ export function useCall() {
   );
 
   const getMedia = (video: boolean) =>
-    navigator.mediaDevices.getUserMedia({ audio: true, video }).then((s) => {
+    getUserMediaWithPrefs(video).then((s) => {
       localStream.current = s;
       return s;
     });
