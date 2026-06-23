@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NyxChat — peer-to-peer messenger, no server</title>
-  <meta name="description" content="A desktop messenger that runs with no server and no account. End-to-end encrypted, peer-to-peer over libp2p on your network and Tor onion services across the Internet." />
+  <title>NyxChat — your messages, nobody else's business</title>
+  <meta name="description" content="A messenger with no server, no account and no scanner. End-to-end encrypted, peer-to-peer over your network and Tor. Built so 'Chat Control' has nothing to read." />
   <meta name="theme-color" content="#07080a" />
-  <meta property="og:title" content="NyxChat — peer-to-peer messenger, no server" />
-  <meta property="og:description" content="End-to-end encrypted. No server, no account. Over libp2p and Tor." />
+  <meta property="og:title" content="NyxChat — your messages, nobody else's business" />
+  <meta property="og:description" content="No server. No account. No scanner. End-to-end encrypted, peer-to-peer." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2307080a'/%3E%3Cpath d='M23 19a9 9 0 0 1-10.5-10A7.5 7.5 0 1 0 23 19z' fill='none' stroke='%235eead4' stroke-width='2'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
@@ -15,228 +15,114 @@
 <body>
   <header class="bar">
     <a class="brand" href="#top">nyxchat<i class="cursor"></i></a>
-    <nav class="bar-nav">
-      <a href="#what">what</a>
-      <a href="#capabilities">capabilities</a>
-      <a href="#architecture">architecture</a>
-      <a href="#get">download</a>
-    </nav>
-    <a class="src" href="https://github.com/propagateur/NyxChat" target="_blank" rel="noopener">source ↗</a>
+    <a class="dl-link" href="#get">download ↓</a>
   </header>
 
   <main id="top">
-    <!-- HERO -->
     <section class="hero">
-      <div class="hero-copy">
-        <p class="kicker">// peer-to-peer · no server · no account</p>
-        <h1>Messages that go straight to the person you trust.</h1>
-        <p class="sub">
-          NyxChat is a desktop messenger with no backend to register with or break into.
-          Your device holds your keys, finds peers on your network, and reaches distant
-          friends through Tor. Everything is sealed before it leaves the machine.
-        </p>
-        <div class="actions">
-          <a class="btn" href="#get">Download <span id="version" class="ver"></span></a>
-          <a class="link-arrow" href="#architecture">See how it works ↓</a>
+      <h1>Your messages are<br /><em>nobody else's</em> business.</h1>
+      <p class="sub">
+        NyxChat has no server, no account, and nothing in the middle. Your keys stay on your
+        device; you talk straight to the people you trust — on your network or through Tor.
+        Encrypted before a single byte leaves the machine.
+      </p>
+
+      <!-- the joke lives here: a "scanner" that finds nothing -->
+      <div class="chat" aria-label="A short skit about a message scanner that finds nothing">
+        <div class="chat-top">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <b>#private</b>
+          <span class="lock">end-to-end encrypted</span>
         </div>
-        <p class="spec">X25519 · XSalsa20-Poly1305 · libp2p · Tor v3 · WebRTC · MIT</p>
-      </div>
-
-      <!-- faux session panel: instructive, on-theme, hand-built -->
-      <aside class="panel" aria-hidden="true">
-        <div class="panel-top"><span></span><span></span><span></span><b>identity</b></div>
-        <div class="panel-body">
-          <div class="row"><span class="lbl">name</span><span class="val">you</span></div>
-          <div class="row"><span class="lbl">fingerprint</span><span class="val">9f2a · c1d7 · 4b08 · ee53</span></div>
-          <div class="row"><span class="lbl">onion</span><span class="val mint">k7q…f4d.onion</span></div>
-          <div class="rule"></div>
-          <div class="line"><b class="mint">→</b> key exchange complete</div>
-          <div class="line"><b class="mint">→</b> channel sealed (x25519)</div>
-          <div class="line dim">no message stored on disk</div>
+        <div class="chat-body">
+          <div class="scan" aria-hidden="true"></div>
+          <div class="msg bot">
+            <span class="who">EU Chat&nbsp;Control</span>
+            Scanning this conversation, for your own safety.
+          </div>
+          <div class="msg me">It's end-to-end encrypted. There is literally nothing to scan.</div>
+          <div class="msg bot">
+            <span class="who">EU Chat&nbsp;Control</span>
+            Please enable the mandatory on-device scanner. It only reads everything before you hit send.
+          </div>
+          <div class="msg me">…that's a backdoor.</div>
+          <div class="msg bot">
+            <span class="who">EU Chat&nbsp;Control</span>
+            We prefer the term “detection capability.” 🙂
+          </div>
+          <div class="msg me leave">— left the chat, installed NyxChat —</div>
+          <div class="verdict"><b>scan result:</b> 0 messages readable. <span class="mint">as intended.</span></div>
         </div>
-      </aside>
-    </section>
-
-    <!-- WHAT IT IS / ISN'T -->
-    <section id="what" class="def">
-      <div class="def-col is">
-        <h2>What it is</h2>
-        <ul>
-          <li>A direct line between two devices.</li>
-          <li>Encrypted end to end, on your hardware.</li>
-          <li>Reachable anywhere via a Tor address.</li>
-          <li>Free, open source, yours to inspect.</li>
-        </ul>
-      </div>
-      <div class="def-col isnt">
-        <h2>What it isn't</h2>
-        <ul>
-          <li>A cloud service with your data on it.</li>
-          <li>Tied to a phone number or email.</li>
-          <li>Routed through a company's servers.</li>
-          <li>Audited yet — treat it as experimental.</li>
-        </ul>
       </div>
     </section>
 
-    <!-- CAPABILITIES -->
-    <section id="capabilities" class="block">
-      <header class="block-head">
-        <p class="kicker">// capabilities</p>
-        <h2>Specifics, not slogans.</h2>
-      </header>
-      <div class="caps">
-        <article class="cap">
-          <svg viewBox="0 0 24 24" class="i"><path d="M12 3 5 6v5c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>
-          <div>
-            <h3>End-to-end encryption</h3>
-            <p>X25519 key exchange, then every message and file is sealed with XSalsa20-Poly1305 and a fresh nonce. Compare fingerprints to verify a contact.</p>
-          </div>
-        </article>
-        <article class="cap">
-          <svg viewBox="0 0 24 24" class="i"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/><path d="M21 4 3 20"/></svg>
-          <div>
-            <h3>No server, no account</h3>
-            <p>There is nothing to sign up for and no backend in the path. Your identity is a key pair generated locally on first launch.</p>
-          </div>
-        </article>
-        <article class="cap">
-          <svg viewBox="0 0 24 24" class="i"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/></svg>
-          <div>
-            <h3>Tor onion reachability</h3>
-            <p>Each device publishes a v3 onion service. Friends reach you from anywhere with no open ports, no relay of ours, and no exposed IP.</p>
-          </div>
-        </article>
-        <article class="cap">
-          <svg viewBox="0 0 24 24" class="i"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><circle cx="12" cy="20" r="1"/></svg>
-          <div>
-            <h3>Automatic local discovery</h3>
-            <p>On the same network, peers appear on their own through libp2p and mDNS. No codes to type, no QR dance for people next to you.</p>
-          </div>
-        </article>
-        <article class="cap">
-          <svg viewBox="0 0 24 24" class="i"><path d="M15.5 4.5a16 16 0 0 0 0 15M8.5 6a13 13 0 0 1 7 0M8.5 18a13 13 0 0 0 7 0"/><path d="M4 8.5l2.5 1.2L4 11M4 13l2.5 1.2L4 15.5"/></svg>
-          <div>
-            <h3>Calls, voice &amp; files</h3>
-            <p>Encrypted WebRTC audio/video with microphone, camera and speaker selection. Voice notes and drag-and-drop file transfer of any size.</p>
-          </div>
-        </article>
-        <article class="cap">
-          <svg viewBox="0 0 24 24" class="i"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z"/></svg>
-          <div>
-            <h3>Nine languages</h3>
-            <p>English, French, Spanish, German, Italian, Portuguese, Dutch, Polish, Russian. Switched live from settings, detected from your system.</p>
-          </div>
-        </article>
-      </div>
+    <section class="facts">
+      <div><span class="big mint">0</span><span>servers in the path</span></div>
+      <div><span class="big mint">0</span><span>accounts to create</span></div>
+      <div><span class="big mint">0</span><span>scanners on your phone</span></div>
     </section>
 
-    <!-- ARCHITECTURE -->
-    <section id="architecture" class="block">
-      <header class="block-head">
-        <p class="kicker">// architecture</p>
-        <h2>Two devices, one sealed channel.</h2>
-        <p class="block-sub">Text and files travel over whichever path reaches the peer; call media stays peer-to-peer. There is no point in the middle that can read it.</p>
-      </header>
-
-      <figure class="diagram">
-        <svg viewBox="0 0 760 300" role="img" aria-label="Architecture diagram of an encrypted channel between two devices over libp2p or Tor">
-          <!-- device A -->
-          <g class="node">
-            <rect x="40" y="110" width="150" height="80" rx="12" />
-            <text x="115" y="142" class="t-strong">You</text>
-            <text x="115" y="164" class="t-mono">key pair · onion</text>
-          </g>
-          <!-- device B -->
-          <g class="node">
-            <rect x="570" y="110" width="150" height="80" rx="12" />
-            <text x="645" y="142" class="t-strong">Peer</text>
-            <text x="645" y="164" class="t-mono">key pair · onion</text>
-          </g>
-
-          <!-- channel -->
-          <line class="wire" x1="190" y1="150" x2="570" y2="150" />
-          <g class="seal">
-            <circle cx="380" cy="150" r="22" />
-            <path d="M372 150v-5a8 8 0 0 1 16 0v5" />
-            <rect x="370" y="150" width="20" height="15" rx="2" />
-          </g>
-          <text x="380" y="116" class="t-mono mint mid">sealed · e2e</text>
-
-          <!-- path labels -->
-          <text x="380" y="205" class="t-mono dim">LAN · libp2p / mDNS</text>
-          <text x="380" y="226" class="t-mono dim">Internet · Tor onion v3</text>
-
-          <!-- nonce / handshake hints -->
-          <text x="115" y="92" class="t-mono dim">x25519</text>
-          <text x="645" y="92" class="t-mono dim">x25519</text>
-        </svg>
-        <figcaption>libp2p carries you on the same network; a Tor onion service carries you across the Internet. Either way the bytes are encrypted before they leave your device.</figcaption>
-      </figure>
+    <section class="prose">
+      <h2>Wait — what is “Chat&nbsp;Control”?</h2>
+      <p>
+        It's a proposed EU regulation that would push apps to <strong>scan your private messages
+        on your own device</strong> — yes, including encrypted ones — and report what an algorithm
+        decides looks suspicious. It's marketed as safety. Cryptographers have a shorter word for
+        scanning everyone's messages all the time: <em>surveillance</em>.
+      </p>
+      <p class="aside">
+        Hundreds of security researchers signed open letters explaining that you cannot scan
+        encrypted messages without breaking the encryption for everyone. A backdoor doesn't check
+        ID at the door.
+      </p>
+      <p>
+        NyxChat's answer isn't a promise — it's the architecture. There's no company server to hand
+        a scanning order to, and your keys never leave your device. We couldn't read your messages
+        if a regulator asked us nicely. Or not so nicely.
+      </p>
     </section>
 
-    <!-- COMPARISON -->
-    <section class="block">
-      <header class="block-head">
-        <p class="kicker">// how it differs</p>
-        <h2>Where your trust goes.</h2>
-      </header>
-      <div class="table-wrap">
-        <table class="cmp">
-          <thead>
-            <tr><th></th><th class="us">NyxChat</th><th>Typical chat app</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Central server</td><td class="us"><span class="no">none</span></td><td>required</td></tr>
-            <tr><td>Account / phone number</td><td class="us"><span class="no">none</span></td><td>required</td></tr>
-            <tr><td>Who routes your messages</td><td class="us">the two of you</td><td>the company</td></tr>
-            <tr><td>Reachability</td><td class="us">Tor onion + LAN</td><td>their cloud</td></tr>
-            <tr><td>Stored history by default</td><td class="us"><span class="no">none on disk</span></td><td>server-side</td></tr>
-            <tr><td>Source code</td><td class="us">open, MIT</td><td>usually closed</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <section class="how">
+      <h2>How it works, in one breath</h2>
+      <p>
+        Open the app and it makes you a key pair and a Tor address — no signup. People on your
+        Wi-Fi show up on their own; for everyone else, swap onion addresses once. Then every message,
+        file and call is sealed end to end with X25519 and XSalsa20-Poly1305. That's it.
+      </p>
     </section>
 
-    <!-- DOWNLOAD -->
-    <section id="get" class="block">
-      <header class="block-head">
-        <p class="kicker">// download</p>
-        <h2>Free. Open source. Pick a platform.</h2>
-      </header>
-      <div class="get-grid">
+    <section id="get" class="get">
+      <h2>Get it. It's free <span id="version" class="ver"></span></h2>
+      <div class="get-rows">
         <a class="get-row" id="dl-win" href="https://github.com/propagateur/NyxChat/releases/latest" target="_blank" rel="noopener">
-          <span class="os">Windows</span><span class="fmt">NyxChat_*_x64-setup.exe</span><span class="go">get →</span>
+          <span>Windows</span><code>NyxChat_*_x64-setup.exe</code><span class="go">→</span>
         </a>
         <a class="get-row" id="dl-mac" href="https://github.com/propagateur/NyxChat/releases/latest" target="_blank" rel="noopener">
-          <span class="os">macOS</span><span class="fmt">NyxChat_*_universal.dmg</span><span class="go">get →</span>
+          <span>macOS</span><code>NyxChat_*_universal.dmg</code><span class="go">→</span>
         </a>
         <a class="get-row" id="dl-deb" href="https://github.com/propagateur/NyxChat/releases/latest" target="_blank" rel="noopener">
-          <span class="os">Linux · Debian/Ubuntu</span><span class="fmt">NyxChat_*_amd64.deb</span><span class="go">get →</span>
+          <span>Linux · .deb</span><code>NyxChat_*_amd64.deb</code><span class="go">→</span>
         </a>
         <a class="get-row" id="dl-rpm" href="https://github.com/propagateur/NyxChat/releases/latest" target="_blank" rel="noopener">
-          <span class="os">Linux · Fedora/RHEL</span><span class="fmt">NyxChat-*.x86_64.rpm</span><span class="go">get →</span>
+          <span>Linux · .rpm</span><code>NyxChat-*.x86_64.rpm</code><span class="go">→</span>
         </a>
       </div>
       <details class="macnote">
-        <summary>macOS says "NyxChat is damaged and can't be opened"?</summary>
-        <p>It isn't damaged — the build isn't notarized with an Apple Developer ID, so macOS quarantines it. Move it to Applications, then run once:</p>
+        <summary>macOS says it's “damaged”?</summary>
+        <p>It's not — it's just unsigned, so macOS sulks. Move it to Applications and run once:</p>
         <pre><code>xattr -dr com.apple.quarantine /Applications/NyxChat.app</code></pre>
       </details>
     </section>
   </main>
 
   <footer class="foot">
-    <div class="foot-line">
-      <span class="brand small">nyxchat</span>
-      <span class="dim">peer-to-peer · encrypted · serverless</span>
-    </div>
-    <nav class="foot-nav">
+    <p class="quip">No trackers on this page. No scanner in the app. No notes for the EU. <span class="mint">Funny how that works.</span></p>
+    <nav>
       <a href="https://github.com/propagateur/NyxChat" target="_blank" rel="noopener">source</a>
       <a href="https://github.com/propagateur/NyxChat/releases" target="_blank" rel="noopener">releases</a>
       <a href="https://github.com/propagateur/NyxChat/blob/master/LICENSE" target="_blank" rel="noopener">license</a>
     </nav>
-    <p class="dim small">Built with Tauri, Rust, libp2p, Tor and WebRTC. No trackers on this page.</p>
+    <p class="dim">peer-to-peer · encrypted · serverless · built with Tauri, Rust, libp2p &amp; Tor</p>
   </footer>
 
   <script src="app.js"></script>
