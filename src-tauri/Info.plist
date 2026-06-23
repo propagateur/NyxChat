@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Shown by macOS when NyxChat first requests microphone/camera access
+         (encrypted voice messages and audio/video calls). Without these keys
+         macOS terminates the app the moment it calls getUserMedia. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>NyxChat uses your microphone for encrypted voice messages and calls.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>NyxChat uses your camera for encrypted video calls.</string>
+</dict>
+</plist>
