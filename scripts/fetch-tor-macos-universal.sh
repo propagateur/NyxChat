@@ -46,6 +46,16 @@ done
 
 chmod +x "$DEST/tor"
 
+# lipo strips the original code signature, and Apple Silicon refuses to
+# execute unsigned Mach-O (the kernel SIGKILLs it), so Tor would never
+# start. Re-apply an ad-hoc signature to the dylibs first, then the tor
+# binary (inside-out).
+for dylib in "$DEST"/*.dylib; do
+  [ -f "$dylib" ] && codesign --force --sign - "$dylib"
+done
+codesign --force --sign - "$DEST/tor"
+codesign --verify --verbose "$DEST/tor"
+
 if [ -x "$DEST/tor" ] && lipo -archs "$DEST/tor" | grep -q "x86_64" && lipo -archs "$DEST/tor" | grep -q "arm64"; then
   echo "OK universal tor -> $DEST/tor ($(lipo -archs "$DEST/tor"))"
 else

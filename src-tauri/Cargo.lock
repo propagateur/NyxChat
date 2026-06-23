@@ -3311,7 +3311,7 @@ dependencies = [
 
 [[package]]
 name = "nyxchat"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "ciborium",
  "crypto_box",
