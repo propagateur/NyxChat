@@ -6,7 +6,7 @@ import { useTranslation } from "../i18n";
 
 interface Props {
   peers: Peer[];
-  verified: Record<string, boolean>;
+  verified: Record<string, string>;
   onConnectOnion: (onion: string) => void;
   onVerify: (peerId: string) => void;
   onOpenChat: (peerId: string) => void;
@@ -57,7 +57,7 @@ export default function Network({ peers, verified, onConnectOnion, onVerify, onO
                 <span className="row-text">
                   <span className="row-name">
                     {p.name ?? shortId(p.peer_id)}
-                    {verified[p.peer_id] && <Check size={13} className="vcheck" />}
+                    {verified[p.peer_id] === p.fingerprint && <Check size={13} className="vcheck" />}
                     <span className={"badge" + (p.transport === "tor" ? " tor" : "")}>
                       {p.transport === "tor" ? "tor" : "lan"}
                     </span>
@@ -70,12 +70,12 @@ export default function Network({ peers, verified, onConnectOnion, onVerify, onO
                   <Message size={15} /> {t("network.message")}
                 </button>
                 <button
-                  className={"btn" + (verified[p.peer_id] ? " primary" : "")}
+                  className={"btn" + (verified[p.peer_id] === p.fingerprint ? " primary" : "")}
                   onClick={() => onVerify(p.peer_id)}
                   disabled={!p.fingerprint}
                   title={t("network.verifyTitle")}
                 >
-                  <ShieldCheck size={15} /> {verified[p.peer_id] ? t("network.verified") : t("network.verify")}
+                  <ShieldCheck size={15} /> {verified[p.peer_id] === p.fingerprint ? t("network.verified") : t("network.verify")}
                 </button>
               </div>
             </section>

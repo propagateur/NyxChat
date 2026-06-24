@@ -1,16 +1,3 @@
-//! Transport Tor : services onion pour joindre des pairs n'importe où.
-//!
-//! - On lance Tor, on publie un service onion qui pointe vers une écoute TCP
-//!   locale, et on expose notre `.onion` au front.
-//! - Les pairs Tor sont indexés par leur clé X25519 (en hexa) : pour une
-//!   connexion entrante, Tor ne nous dit pas qui se connecte, mais le `Hello`
-//!   porte la clé publique — c'est elle l'identité.
-//! - Sur le fil : des trames `Frame` (CBOR, préfixées par leur longueur) qui
-//!   transportent les mêmes `Wire`/`Ack` que libp2p. Le contenu reste chiffré
-//!   par crypto_box ; Tor ajoute l'anonymat et la traversée de NAT.
-//!
-//! Le média des appels (WebRTC/UDP) ne passe PAS par Tor : il reste en LAN.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -26,25 +13,29 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, timeout};
 
 use crate::crypto;
-use crate::net::{Ack, FileSent, FileWriter, IncomingMessage, ReceivedFile, Shared, SignalMsg, Wire, FILE_CHUNK};
+use crate::net::{
+    Ack, FileSent, FileWriter, GroupInviteEvent, GroupLeaveEvent, GroupMessage, GroupMeta,
+    IncomingMessage, ReceivedFile, Shared, SignalMsg, Wire, FILE_CHUNK,
+};
 use crate::tor;
 
-const SOCKS_PORT: u16 = 19050;
+const SOCKS_PORT_FALLBACK: u16 = 19050;
 const MAX_FRAME: usize = 2 * 1024 * 1024;
 
-/// Une trame sur le fil : requête (Wire) ou réponse (Ack), comme request/response.
 #[derive(Serialize, Deserialize)]
 enum Frame {
     Req(Wire),
     Resp(Ack),
 }
 
-/// Commandes adressées au transport Tor depuis les commandes Tauri.
 pub enum TorCmd {
     Connect(String),
     SendText { id: String, text: String },
     SendFile { id: String, path: PathBuf, reply: oneshot::Sender<Result<FileSent, String>> },
     Signal { id: String, data: String },
+    GroupMsg { id: String, gid: String, text: String },
+    GroupInvite { id: String, gid: String, name: String, members: Vec<String> },
+    GroupLeave { id: String, gid: String },
 }
 
 type Peers = Arc<Mutex<HashMap<String, mpsc::Sender<Frame>>>>;
@@ -81,7 +72,9 @@ pub async fn start(
         Err(_) => return,
     };
 
-    let t = match tor::start(&tor_exe, &data_dir, local_port, SOCKS_PORT).await {
+    let socks_port = free_port().await.unwrap_or(SOCKS_PORT_FALLBACK);
+
+    let t = match tor::start(&tor_exe, &data_dir, local_port, socks_port).await {
         Ok(t) => t,
         Err(e) => {
             let msg = format!("Tor failed to start: {e}");
@@ -108,7 +101,6 @@ pub async fn start(
         files: HashMap::new(),
     }));
 
-    // Connexions entrantes (via le service onion).
     {
         let peers = peers.clone();
         let inbox = inbox.clone();
@@ -129,7 +121,6 @@ pub async fn start(
         });
     }
 
-    // Commandes sortantes.
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
             TorCmd::Connect(onion) => {
@@ -139,15 +130,10 @@ pub async fn start(
                 let app = app.clone();
                 let my_name = shared.me.lock().unwrap().name.clone();
                 tokio::spawn(async move {
-                    // Reaching an onion service can take a while (Tor may still
-                    // be bootstrapping, the peer may be briefly offline, and
-                    // building the rendezvous circuit is slow). Retry with
-                    // backoff instead of failing on the first attempt, and tell
-                    // the UI if we ultimately give up.
                     let deadline = Instant::now() + Duration::from_secs(180);
                     let mut delay = Duration::from_secs(2);
                     loop {
-                        match timeout(Duration::from_secs(45), tor::dial(SOCKS_PORT, &onion)).await {
+                        match timeout(Duration::from_secs(45), tor::dial(socks_port, &onion)).await {
                             Ok(Ok(stream)) => {
                                 let hello = Wire::Hello { key: my_pub, name: my_name };
                                 spawn_conn(stream, Some(hello), peers, inbox, shared, app);
@@ -184,22 +170,38 @@ pub async fn start(
                 let r = send_file(&peers, &shared, &secret, my_pub, &id, &path).await;
                 let _ = reply.send(r);
             }
+            TorCmd::GroupMsg { id, gid, text } => {
+                if let Some(pk) = shared.tor_peer_key(&id) {
+                    let (body, nonce) = crypto::seal(&secret, &pk, text.as_bytes());
+                    send_to(&peers, &id, Frame::Req(Wire::GroupMsg { key: my_pub, gid, nonce, body })).await;
+                }
+            }
+            TorCmd::GroupInvite { id, gid, name, members } => {
+                if let Some(pk) = shared.tor_peer_key(&id) {
+                    let meta = GroupMeta { id: gid, name, members };
+                    let mut buf = Vec::new();
+                    if ciborium::into_writer(&meta, &mut buf).is_ok() {
+                        let (body, nonce) = crypto::seal(&secret, &pk, &buf);
+                        send_to(&peers, &id, Frame::Req(Wire::GroupInvite { key: my_pub, nonce, body })).await;
+                    }
+                }
+            }
+            TorCmd::GroupLeave { id, gid } => {
+                send_to(&peers, &id, Frame::Req(Wire::GroupLeave { key: my_pub, gid })).await;
+            }
         }
     }
 
-    drop(t); // garde Tor vivant jusqu'à la fermeture de l'app
+    drop(t);
 }
 
-/// Gère une connexion (entrante ou sortante) sur sa propre tâche.
 fn spawn_conn(stream: TcpStream, hello: Option<Wire>, peers: Peers, inbox: Arc<Mutex<Inbox>>, shared: Arc<Shared>, app: AppHandle) {
     tokio::spawn(async move {
         let (mut rd, wr) = stream.into_split();
         let (out_tx, out_rx) = mpsc::channel::<Frame>(64);
 
-        // tâche d'écriture
         tokio::spawn(writer_loop(wr, out_rx));
 
-        // si on initie, on envoie notre Hello en premier
         if let Some(h) = hello {
             let _ = out_tx.send(Frame::Req(h)).await;
         }
@@ -234,7 +236,6 @@ fn spawn_conn(stream: TcpStream, hello: Option<Wire>, peers: Peers, inbox: Arc<M
             }
         }
 
-        // déconnexion : on retire le pair et on rafraîchit la liste
         if let Some(id) = peer_id {
             peers.lock().unwrap().remove(&id);
             shared.tor_set_online(&id, false);
@@ -261,7 +262,6 @@ async fn send_to(peers: &Peers, id: &str, frame: Frame) {
 async fn send_file(peers: &Peers, shared: &Arc<Shared>, secret: &SecretKey, my_pub: [u8; 32], id: &str, path: &Path) -> Result<FileSent, String> {
     let pk = shared.tor_peer_key(id).ok_or("pair Tor inconnu ou hors ligne")?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("fichier").to_string();
-    // Stream the file from disk in chunks rather than loading it whole.
     let size = tokio::fs::metadata(path).await.map_err(|e| format!("lecture impossible : {e}"))?.len();
     let chunks = ((size + FILE_CHUNK as u64 - 1) / FILE_CHUNK as u64) as u32;
     let fid = rand::random::<u64>();
@@ -292,8 +292,6 @@ async fn send_file(peers: &Peers, shared: &Arc<Shared>, secret: &SecretKey, my_p
     Ok(FileSent { name, size, path: path.to_string_lossy().to_string() })
 }
 
-// --- Cadrage des trames (longueur u32 big-endian + CBOR) -------------------
-
 async fn write_frame(wr: &mut OwnedWriteHalf, f: &Frame) -> std::io::Result<()> {
     let mut buf = Vec::new();
     ciborium::into_writer(f, &mut buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -322,8 +320,6 @@ fn hex(bytes: &[u8; 32]) -> String {
     }
     s
 }
-
-// --- Réception : déchiffrement, events, réassemblage de fichiers -----------
 
 struct Inbox {
     secret: Arc<SecretKey>,
@@ -390,6 +386,35 @@ impl Inbox {
                 }
                 Ack::Ok
             }
+            Wire::GroupMsg { key, gid, nonce, body } => {
+                self.shared.tor_set_key(id.to_string(), key);
+                if let Some(pt) = crypto::open(&self.secret, &PublicKey::from(key), &nonce, &body) {
+                    if let Ok(text) = String::from_utf8(pt) {
+                        let _ = self.app.emit(
+                            "group_message",
+                            GroupMessage { gid, peer_id: hex(&key), name: self.shared.tor_peer_name(id), text, ts: now_ms() },
+                        );
+                    }
+                }
+                Ack::Ok
+            }
+            Wire::GroupInvite { key, nonce, body } => {
+                self.shared.tor_set_key(id.to_string(), key);
+                if let Some(pt) = crypto::open(&self.secret, &PublicKey::from(key), &nonce, &body) {
+                    if let Ok(meta) = ciborium::from_reader::<GroupMeta, _>(&pt[..]) {
+                        let _ = self.app.emit(
+                            "group_invite",
+                            GroupInviteEvent { gid: meta.id, name: meta.name, members: meta.members, from: id.to_string() },
+                        );
+                    }
+                }
+                Ack::Ok
+            }
+            Wire::GroupLeave { key, gid } => {
+                self.shared.tor_set_key(id.to_string(), key);
+                let _ = self.app.emit("group_leave", GroupLeaveEvent { gid, peer_id: hex(&key) });
+                Ack::Ok
+            }
         }
     }
 
@@ -443,4 +468,9 @@ impl Inbox {
 
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+async fn free_port() -> Option<u16> {
+    let l = TcpListener::bind("127.0.0.1:0").await.ok()?;
+    l.local_addr().ok().map(|a| a.port())
 }

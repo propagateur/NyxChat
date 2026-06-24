@@ -159,3 +159,44 @@ export const Lock = ({ size = 18, className }: P) => (
     <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
   </svg>
 );
+
+export const Users = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19" />
+    <circle cx="10" cy="7.5" r="3.2" />
+    <path d="M20 19v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.5 4.7a3.2 3.2 0 0 1 0 5.8" />
+  </svg>
+);
+
+export const UserPlus = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M14 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4A3.5 3.5 0 0 0 3 17.5V19" />
+    <circle cx="8.5" cy="7.5" r="3.2" />
+    <path d="M18 8v6M21 11h-6" />
+  </svg>
+);
+
+export const LogOut = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M14 4h4a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 18 20h-4" />
+    <path d="M10 12h9M16 8l4 4-4 4" />
+  </svg>
+);
+
+export const X = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+export const Minimize = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M9 4v3.5A1.5 1.5 0 0 1 7.5 9H4M20 9h-3.5A1.5 1.5 0 0 1 15 7.5V4M15 20v-3.5a1.5 1.5 0 0 1 1.5-1.5H20M4 15h3.5A1.5 1.5 0 0 1 9 16.5V20" />
+  </svg>
+);
+
+export const Maximize = ({ size = 18, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M4 8.5V5a1 1 0 0 1 1-1h3.5M20 8.5V5a1 1 0 0 0-1-1h-3.5M20 15.5V19a1 1 0 0 1-1 1h-3.5M4 15.5V19a1 1 0 0 0 1 1h3.5" />
+  </svg>
+);

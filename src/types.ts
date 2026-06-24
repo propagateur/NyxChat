@@ -3,20 +3,21 @@ export type Accent = "lune" | "or" | "iris" | "rose";
 
 export interface Identity {
   peer_id: string;
+  key: string;
   name: string;
   fingerprint: string;
-  onion: string; // adresse .onion (vide tant que Tor démarre)
+  onion: string;
 }
 
 export interface Peer {
   peer_id: string;
+  key: string | null;
   name: string | null;
   fingerprint: string | null;
   online: boolean;
   transport: "lan" | "tor";
 }
 
-// Ce que le backend nous pousse quand un message arrive.
 export interface IncomingMessage {
   peer_id: string;
   name: string | null;
@@ -24,14 +25,12 @@ export interface IncomingMessage {
   ts: number;
 }
 
-// Confirmation d'envoi d'un fichier (retour de la commande send_file).
 export interface FileSent {
   name: string;
   size: number;
   path: string;
 }
 
-// Event "file" : un fichier reçu et enregistré sur le disque.
 export interface ReceivedFile {
   peer_id: string;
   from_name: string | null;
@@ -44,14 +43,39 @@ export interface ReceivedFile {
 export interface FileRef {
   name: string;
   size: number;
-  path?: string; // côté reçu uniquement : où il a été enregistré
+  path?: string;
 }
 
-// Ce qu'on garde côté UI pour afficher une conversation.
 export interface ChatMessage {
   text: string;
   ts: number;
   outgoing: boolean;
   failed?: boolean;
   file?: FileRef;
+  from?: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  members: string[];
+  owner: boolean;
+}
+
+export interface GroupMessage {
+  gid: string;
+  peer_id: string;
+  name: string | null;
+  text: string;
+  ts: number;
+}
+export interface GroupInvite {
+  gid: string;
+  name: string;
+  members: string[];
+  from: string;
+}
+export interface GroupLeave {
+  gid: string;
+  peer_id: string;
 }

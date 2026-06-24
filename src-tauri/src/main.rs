@@ -1,4 +1,3 @@
-// Pas de console qui s'ouvre en release sous Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod crypto;
@@ -9,6 +8,7 @@ mod tornet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use libp2p::PeerId;
 use net::{Command, FileSent, Identity, PeerView, Shared};
 use tauri::{Manager, State};
 use tokio::sync::{mpsc, oneshot};
@@ -83,17 +83,171 @@ async fn send_voice(
     std::fs::write(&path, &bytes).map_err(|e| format!("écriture impossible : {e}"))?;
 
     let (reply, rx) = oneshot::channel();
-    if shared.is_tor_peer(&peer_id) {
-        tor.send(TorCmd::SendFile { id: peer_id, path, reply })
+    let res = if shared.is_tor_peer(&peer_id) {
+        tor.send(TorCmd::SendFile { id: peer_id, path: path.clone(), reply })
             .await
             .map_err(|_| "réseau Tor indisponible".to_string())?;
-        return rx.await.map_err(|_| "pas de réponse du réseau".to_string())?;
+        rx.await.map_err(|_| "pas de réponse du réseau".to_string())?
+    } else {
+        let peer = peer_id.parse().map_err(|_| "identifiant de pair invalide".to_string())?;
+        tx.send(Command::SendFile { peer, path: path.clone(), reply })
+            .await
+            .map_err(|_| "réseau indisponible".to_string())?;
+        rx.await.map_err(|_| "pas de réponse du réseau".to_string())?
+    };
+    let _ = std::fs::remove_file(&path);
+    res
+}
+
+async fn route_tor(
+    shared: &Arc<Shared>,
+    tor: &mpsc::Sender<TorCmd>,
+    tx: &mpsc::Sender<Command>,
+    key: &str,
+    to_tor: impl FnOnce(String) -> TorCmd,
+    to_lan: impl FnOnce(PeerId) -> Command,
+) {
+    if shared.is_tor_peer(key) {
+        let _ = tor.send(to_tor(key.to_string())).await;
+    } else if let Some(peer) = shared.lan_peer_by_key(key) {
+        let _ = tx.send(to_lan(peer)).await;
     }
-    let peer = peer_id.parse().map_err(|_| "identifiant de pair invalide".to_string())?;
-    tx.send(Command::SendFile { peer, path, reply })
-        .await
-        .map_err(|_| "réseau indisponible".to_string())?;
-    rx.await.map_err(|_| "pas de réponse du réseau".to_string())?
+}
+
+#[tauri::command]
+async fn send_group(
+    gid: String,
+    text: String,
+    members: Vec<String>,
+    shared: State<'_, Arc<Shared>>,
+    tx: State<'_, mpsc::Sender<Command>>,
+    tor: State<'_, mpsc::Sender<TorCmd>>,
+) -> Result<(), String> {
+    for key in members {
+        route_tor(
+            &shared,
+            &tor,
+            &tx,
+            &key,
+            |id| TorCmd::GroupMsg { id, gid: gid.clone(), text: text.clone() },
+            |peer| Command::GroupMsg { peer, gid: gid.clone(), text: text.clone() },
+        )
+        .await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_invite(
+    member_key: String,
+    gid: String,
+    name: String,
+    members: Vec<String>,
+    shared: State<'_, Arc<Shared>>,
+    tx: State<'_, mpsc::Sender<Command>>,
+    tor: State<'_, mpsc::Sender<TorCmd>>,
+) -> Result<(), String> {
+    route_tor(
+        &shared,
+        &tor,
+        &tx,
+        &member_key,
+        |id| TorCmd::GroupInvite { id, gid: gid.clone(), name: name.clone(), members: members.clone() },
+        |peer| Command::GroupInvite { peer, gid: gid.clone(), name: name.clone(), members: members.clone() },
+    )
+    .await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn group_leave(
+    gid: String,
+    members: Vec<String>,
+    shared: State<'_, Arc<Shared>>,
+    tx: State<'_, mpsc::Sender<Command>>,
+    tor: State<'_, mpsc::Sender<TorCmd>>,
+) -> Result<(), String> {
+    for key in members {
+        route_tor(
+            &shared,
+            &tor,
+            &tx,
+            &key,
+            |id| TorCmd::GroupLeave { id, gid: gid.clone() },
+            |peer| Command::GroupLeave { peer, gid: gid.clone() },
+        )
+        .await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_path(target: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let spawned = std::process::Command::new("explorer").arg(&target).spawn();
+    #[cfg(target_os = "macos")]
+    let spawned = std::process::Command::new("open").arg(&target).spawn();
+    #[cfg(target_os = "linux")]
+    let spawned = std::process::Command::new("xdg-open").arg(&target).spawn();
+    spawned.map(|_| ()).map_err(|e| e.to_string())
+}
+
+fn hex_bytes(b: &[u8]) -> String {
+    let mut s = String::with_capacity(b.len() * 2);
+    for x in b {
+        s.push_str(&format!("{x:02x}"));
+    }
+    s
+}
+
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+#[tauri::command]
+fn export_identity(dest: String, app: tauri::AppHandle) -> Result<(), String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let identity = std::fs::read(dir.join("identity.key")).map_err(|_| "identité introuvable".to_string())?;
+    let e2e = std::fs::read(dir.join("e2e.key")).map_err(|_| "clé de chiffrement introuvable".to_string())?;
+    let name = std::fs::read_to_string(dir.join("name.txt")).unwrap_or_default();
+    let out = format!(
+        "NYXCHAT-BACKUP-1\nidentity:{}\ne2e:{}\nname:{}\n",
+        hex_bytes(&identity),
+        hex_bytes(&e2e),
+        name.trim()
+    );
+    std::fs::write(&dest, out).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn import_identity(src: String, app: tauri::AppHandle) -> Result<(), String> {
+    let content = std::fs::read_to_string(&src).map_err(|e| e.to_string())?;
+    let mut identity: Option<Vec<u8>> = None;
+    let mut e2e: Option<Vec<u8>> = None;
+    let mut name = String::new();
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("identity:") {
+            identity = unhex(v.trim());
+        } else if let Some(v) = line.strip_prefix("e2e:") {
+            e2e = unhex(v.trim());
+        } else if let Some(v) = line.strip_prefix("name:") {
+            name = v.trim().to_string();
+        }
+    }
+    let identity = identity.filter(|b| !b.is_empty()).ok_or("sauvegarde invalide")?;
+    let e2e = e2e.filter(|b| b.len() == 32).ok_or("sauvegarde invalide")?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("identity.key"), &identity).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("e2e.key"), &e2e).map_err(|e| e.to_string())?;
+    if !name.is_empty() {
+        let _ = std::fs::write(dir.join("name.txt"), &name);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -145,9 +299,6 @@ async fn set_name(
 }
 
 fn main() {
-    // On many Linux setups (NVIDIA, some VMs/drivers) WebKitGTK renders a blank
-    // window with its hardware-accelerated DMABUF/compositing path. Disabling it
-    // before GTK initializes makes the UI show up. Harmless on other platforms.
     #[cfg(target_os = "linux")]
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
@@ -157,8 +308,6 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        // Fermer la fenêtre la cache dans le tray au lieu de quitter (messagerie
-        // qui doit rester joignable en arrière-plan).
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = window.hide();
@@ -168,7 +317,6 @@ fn main() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir).ok();
-            // Les fichiers reçus atterrissent dans Téléchargements (sinon le dossier app).
             let download_dir = app.path().download_dir().unwrap_or_else(|_| dir.clone());
             let tor_data = dir.join("tor");
 
@@ -176,6 +324,7 @@ fn main() {
             let my_pub: [u8; 32] = *secret.public_key().as_bytes();
             let identity = Identity {
                 peer_id: id_keys.public().to_peer_id().to_string(),
+                key: crypto::hex(&my_pub),
                 name: net::load_name(&dir),
                 fingerprint: crypto::fingerprint(&my_pub),
                 onion: String::new(),
@@ -189,10 +338,7 @@ fn main() {
             app.manage(cmd_tx);
             app.manage(tor_tx);
 
-            // Le transport Tor a sa propre copie de la clé de chiffrement.
             let tor_secret = Arc::new(crypto_box::SecretKey::from(secret.to_bytes()));
-            // En version installée, tor.exe est une ressource embarquée ; en dev
-            // (binaire lancé directement), on retombe sur le dossier vendor.
             let tor_rel = if cfg!(windows) {
                 "vendor/tor/tor/tor.exe"
             } else {
@@ -218,7 +364,6 @@ fn main() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(net::run(id_keys, secret, shared, handle, cmd_rx, download_dir));
 
-            // Icône dans la zone de notification.
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             let show_i = MenuItem::with_id(app, "show", "Ouvrir NyxChat", true, None::<&str>)?;
@@ -259,7 +404,13 @@ fn main() {
             send_voice,
             signal,
             connect_onion,
-            set_name
+            set_name,
+            send_group,
+            send_invite,
+            group_leave,
+            open_path,
+            export_identity,
+            import_identity
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de NyxChat");

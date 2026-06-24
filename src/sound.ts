@@ -1,12 +1,8 @@
-// Notification sounds, synthesized with the Web Audio API so there are no
-// audio files to ship, license or load. A short chime for messages and a
-// looping two-burst ring for incoming calls. Can be muted in Settings.
-
 let ctx: AudioContext | null = null;
 let ringTimer: number | null = null;
 
 export function soundsEnabled(): boolean {
-  return localStorage.getItem("nyx.sounds") !== "off"; // on by default
+  return localStorage.getItem("nyx.sounds") !== "off";
 }
 
 export function setSounds(on: boolean) {
@@ -25,7 +21,6 @@ function audio(): AudioContext | null {
   }
 }
 
-// One enveloped tone, scheduled at `at` seconds on the context clock.
 function tone(c: AudioContext, freq: number, at: number, dur: number, peak = 0.16) {
   const osc = c.createOscillator();
   const gain = c.createGain();
@@ -39,7 +34,6 @@ function tone(c: AudioContext, freq: number, at: number, dur: number, peak = 0.1
   osc.stop(at + dur + 0.02);
 }
 
-// Soft two-note chime for a new message / file.
 export function playMessage() {
   if (!soundsEnabled()) return;
   const c = audio();
@@ -49,7 +43,6 @@ export function playMessage() {
   tone(c, 1318.5, t + 0.11, 0.22, 0.15);
 }
 
-// Warbling double-burst, like a phone ring.
 function ringOnce() {
   const c = audio();
   if (!c) return;
@@ -61,7 +54,6 @@ function ringOnce() {
   }
 }
 
-// Start ringing for an incoming call until stopped.
 export function startRing() {
   if (!soundsEnabled() || ringTimer !== null) return;
   ringOnce();

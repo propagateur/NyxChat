@@ -5,7 +5,6 @@ import { getUserMediaWithPrefs } from "./devices";
 import { startRing, stopRing } from "./sound";
 import { useTranslation } from "./i18n";
 
-// Messages échangés sur le canal de signalisation (sérialisés en JSON).
 type Sig =
   | { kind: "offer"; sdp: string; video: boolean }
   | { kind: "answer"; sdp: string }
@@ -22,11 +21,7 @@ export interface CallState {
   camOff: boolean;
 }
 
-// ICE servers (STUN + optional user TURN) are built fresh per call, see calls.ts.
-
-// How long an unanswered call rings before it is abandoned (ms).
 const RING_MS = 35000;
-// How long the "failed/no answer" banner stays visible (ms).
 const ERROR_MS = 5000;
 
 export function useCall() {
@@ -38,12 +33,9 @@ export function useCall() {
   const localStream = useRef<MediaStream | null>(null);
   const pendingIce = useRef<RTCIceCandidateInit[]>([]);
   const pendingOffer = useRef<{ peerId: string; sdp: string; video: boolean } | null>(null);
-  // Miroir synchrone de `call` pour les handlers d'events (closures).
   const callRef = useRef<CallState | null>(null);
   callRef.current = call;
-  // True when we initiated the call: only the caller drives ICE restarts.
   const isCaller = useRef(false);
-  // Ring/answer timeout and a guard so we only ICE-restart once.
   const ringTimer = useRef<number | null>(null);
   const errorTimer = useRef<number | null>(null);
   const restarted = useRef(false);
@@ -91,8 +83,6 @@ export function useCall() {
     pendingIce.current = [];
   };
 
-  // Caller-side ICE restart: if the connection drops, renegotiate once with a
-  // fresh ICE gathering instead of dropping the call outright.
   const tryIceRestart = useCallback((conn: RTCPeerConnection, peerId: string, video: boolean) => {
     if (restarted.current || !isCaller.current) return;
     restarted.current = true;
@@ -170,7 +160,6 @@ export function useCall() {
         const offer = await conn.createOffer();
         await conn.setLocalDescription(offer);
         send(peerId, { kind: "offer", sdp: offer.sdp!, video });
-        // Give up if the peer never answers.
         clearRing();
         ringTimer.current = window.setTimeout(() => {
           if (callRef.current?.peerId === peerId && callRef.current.status === "calling") {
@@ -240,8 +229,6 @@ export function useCall() {
 
       switch (sig.kind) {
         case "offer": {
-          // Renegotiation (e.g. ICE restart) from the peer we are already
-          // connected to: answer on the existing connection, no new call.
           if (conn && callRef.current?.peerId === peer_id && callRef.current.status === "connected") {
             try {
               await conn.setRemoteDescription({ type: "offer", sdp: sig.sdp });
@@ -254,7 +241,6 @@ export function useCall() {
             }
             return;
           }
-          // Déjà occupé avec quelqu'un d'autre ? on décline poliment.
           if (callRef.current || pendingOffer.current) {
             send(peer_id, { kind: "bye" });
             return;
@@ -262,7 +248,6 @@ export function useCall() {
           pendingOffer.current = { peerId: peer_id, sdp: sig.sdp, video: sig.video };
           setCall({ peerId: peer_id, status: "incoming", video: sig.video, local: null, remote: null, muted: false, camOff: false });
           startRing();
-          // Auto-decline a call that is never picked up.
           clearRing();
           ringTimer.current = window.setTimeout(() => {
             if (pendingOffer.current?.peerId === peer_id) {
@@ -280,7 +265,6 @@ export function useCall() {
           break;
         }
         case "ice": {
-          // On bufferise tant que la description distante n'est pas posée.
           if (conn && conn.remoteDescription) {
             try {
               await conn.addIceCandidate(sig.candidate);

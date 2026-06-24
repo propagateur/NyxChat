@@ -1,8 +1,3 @@
-// Audio/video device preferences: which microphone and camera to capture from,
-// and which speaker to play the remote audio on. Stored locally and applied to
-// the next call. Output (speaker) selection uses HTMLMediaElement.setSinkId,
-// which is only available on Chromium-based webviews (Windows/Linux); on macOS
-// WKWebView it is not supported, so the output picker is hidden there.
 import { useCallback, useEffect, useState } from "react";
 
 export interface DevicePrefs {
@@ -35,7 +30,6 @@ export function saveDevices(d: DevicePrefs) {
   localStorage.setItem("nyx.devices", JSON.stringify(d));
 }
 
-// Build getUserMedia constraints from the saved preferences.
 function mediaConstraints(video: boolean): MediaStreamConstraints {
   const d = loadDevices();
   return {
@@ -44,8 +38,6 @@ function mediaConstraints(video: boolean): MediaStreamConstraints {
   };
 }
 
-// Capture media honoring the chosen devices, falling back to system defaults if
-// a saved device is gone (unplugged) so a call never fails for that reason.
 export async function getUserMediaWithPrefs(video: boolean): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia(mediaConstraints(video));
@@ -58,7 +50,6 @@ export async function getUserMediaWithPrefs(video: boolean): Promise<MediaStream
   }
 }
 
-// Route a media element's audio to the chosen speaker (no-op if unsupported).
 export function applyOutput(el: HTMLMediaElement | null) {
   const { audioOut } = loadDevices();
   if (!el || !audioOut || !outputSelectable) return;
@@ -73,8 +64,6 @@ export interface DeviceLists {
   audioOut: MediaDeviceInfo[];
 }
 
-// Enumerate devices and keep the list fresh on plug/unplug. Device labels are
-// only populated once mic/camera permission has been granted at least once.
 export function useMediaDevices() {
   const [devices, setDevices] = useState<DeviceLists>({ audioIn: [], videoIn: [], audioOut: [] });
 
@@ -97,7 +86,6 @@ export function useMediaDevices() {
     return () => navigator.mediaDevices.removeEventListener("devicechange", refresh);
   }, [refresh]);
 
-  // Ask once for mic/camera so the OS prompt appears and device labels unlock.
   const requestAccess = useCallback(async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });

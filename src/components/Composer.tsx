@@ -5,6 +5,7 @@ import { useTranslation } from "../i18n";
 interface Props {
   disabled: boolean;
   placeholder: string;
+  allowMedia?: boolean;
   onSend: (text: string) => void;
   onSendFile: () => void;
   onSendVoice: (bytes: number[], ext: string) => void;
@@ -19,7 +20,7 @@ const EMOJIS = [
   "🔑", "👀", "🥳", "😏", "🤫", "📎", "📁", "💬",
 ];
 
-export default function Composer({ disabled, placeholder, onSend, onSendFile, onSendVoice }: Props) {
+export default function Composer({ disabled, placeholder, allowMedia = true, onSend, onSendFile, onSendVoice }: Props) {
   const [text, setText] = useState("");
   const [emoji, setEmoji] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -99,14 +100,16 @@ export default function Composer({ disabled, placeholder, onSend, onSendFile, on
       <button type="button" className="c-btn" disabled={disabled} onClick={() => setEmoji((v) => !v)} title="Emoji">
         <Smile />
       </button>
-      <button type="button" className="c-btn" disabled={disabled} onClick={onSendFile} title={t("composer.sendEncryptedFile")}>
-        <Paperclip />
-      </button>
+      {allowMedia && (
+        <button type="button" className="c-btn" disabled={disabled} onClick={onSendFile} title={t("composer.sendEncryptedFile")}>
+          <Paperclip />
+        </button>
+      )}
 
       <textarea rows={1} value={text} disabled={disabled} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
 
-      {text.trim() ? (
-        <button type="button" className="c-btn c-send" disabled={disabled} onClick={send} title={t("composer.send")}>
+      {text.trim() || !allowMedia ? (
+        <button type="button" className="c-btn c-send" disabled={disabled || !text.trim()} onClick={send} title={t("composer.send")}>
           <Send />
         </button>
       ) : (

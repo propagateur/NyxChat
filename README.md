@@ -11,14 +11,16 @@ Built with Tauri, Rust, React, TypeScript, libp2p, Tor, and WebRTC.
 - End-to-end encrypted messages with X25519 and XSalsa20-Poly1305
 - Automatic local peer discovery with mDNS and libp2p
 - Remote reachability through Tor onion services
+- Encrypted group conversations, with invitations and membership synced peer-to-peer (no server)
 - QR-based address sharing
 - Encrypted file transfer with image previews
 - Voice messages
-- Audio and video calls with encrypted signaling
-- Fingerprint-based identity verification
-- Light and dark themes with accent colors
-- English and French interface
-- Command palette, emoji picker, drag and drop, and lightweight Markdown
+- Audio and video calls with encrypted signaling, and a minimizable call window so you can keep chatting
+- Fingerprint-based identity verification, bound to the exact key
+- Identity backup and restore — your account is a file you own
+- Four interface styles (Nocturne, Terminal, Aurore, Brume), light and dark, with accent colors
+- Interface in nine languages (English, French, Spanish, German, Italian, Portuguese, Dutch, Polish, Russian)
+- Command palette, emoji picker, drag and drop, clickable links, and lightweight Markdown
 - Pinned, muted, and verified conversations
 - System tray support
 - No conversation history written to disk by default
@@ -44,7 +46,8 @@ The fingerprint displayed for each peer is derived from the public encryption ke
 
 - **Local network:** peers discover each other automatically with mDNS and connect directly.
 - **Internet:** peers exchange `.onion` addresses and connect through Tor onion services without opening ports.
-- **Calls:** WebRTC calls are designed for local networks and common NAT traversal through STUN. Media does not travel through Tor.
+- **Groups:** a group message is sealed individually for each member and routed over whichever transport reaches them. Members are identified by their encryption key, so groups work across both local and Tor links.
+- **Calls:** WebRTC calls are designed for local networks and common NAT traversal through STUN, with a bundled free relay as a fallback. Media does not travel through Tor.
 
 ## Security Notes
 
@@ -82,8 +85,8 @@ The first native build can take several minutes because the Rust networking stac
 The GitHub Actions workflow builds Windows, a universal macOS (Intel + Apple Silicon) `.dmg`, and Linux (`.deb` / `.rpm`) artifacts when a version tag is pushed.
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ### macOS first launch

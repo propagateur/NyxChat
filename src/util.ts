@@ -3,11 +3,10 @@ export function initial(name?: string | null) {
   return c || "?";
 }
 
-// Couleur d'avatar déterministe à partir d'un identifiant (teinte stable).
 export function avatarStyle(id: string): { background: string } {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
-  return { background: `linear-gradient(150deg, hsl(${h} 55% 42%), hsl(${(h + 40) % 360} 55% 28%))` };
+  return { background: `linear-gradient(152deg, hsl(${h} 36% 52%), hsl(${(h + 28) % 360} 40% 38%))` };
 }
 
 const IMG = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg"];
@@ -50,7 +49,6 @@ export function formatDay(ts: number) {
   return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 }
 
-// Découpe un texte en segments texte/lien pour rendre les URL cliquables.
 export function linkify(text: string): { url: string | null; value: string }[] {
   const re = /(https?:\/\/[^\s]+)/g;
   const out: { url: string | null; value: string }[] = [];

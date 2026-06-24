@@ -1,11 +1,3 @@
-//! Pile réseau pair-à-pair : découverte mDNS, transport chiffré (Noise),
-//! et un protocole request/response qui transporte nos enveloppes chiffrées
-//! (messages texte et fichiers).
-//!
-//! Tout le swarm vit dans une seule tâche async (`run`). Le reste de l'app lui
-//! parle via un canal de commandes et reçoit les nouveautés via les events
-//! Tauri. Ça évite d'avoir à rendre le Swarm partageable entre threads.
-
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,38 +19,38 @@ use tokio::sync::{mpsc, oneshot};
 use crate::crypto;
 
 const PROTOCOL: &str = "/nyxchat/1.0.0";
-pub(crate) const FILE_CHUNK: usize = 256 * 1024; // 256 KiB par morceau chiffré
+pub(crate) const FILE_CHUNK: usize = 256 * 1024;
 
-// --- Format des messages sur le fil ---------------------------------------
-
-/// On joint la clé publique de l'expéditeur à chaque message : ainsi le
-/// destinataire peut toujours reconstruire la boîte de chiffrement, même s'il a
-/// raté le Hello initial (reconnexion, redémarrage…).
-// Partagé entre le transport libp2p (LAN) et le transport Tor (Internet).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum Wire {
     Hello { key: [u8; 32], name: String },
     Msg { key: [u8; 32], nonce: [u8; 24], body: Vec<u8> },
-    // Un fichier = un FileMeta puis N FileChunk. Chaque morceau est chiffré
-    // séparément ; ils peuvent arriver dans le désordre (streams libp2p
-    // distincts), d'où le numéro de séquence.
     FileMeta { key: [u8; 32], id: u64, name: String, size: u64, chunks: u32 },
     FileChunk { key: [u8; 32], id: u64, seq: u32, nonce: [u8; 24], body: Vec<u8> },
-    // Signalisation WebRTC (offre/réponse SDP, candidats ICE). Le contenu est
-    // un blob JSON opaque produit par le front ; on ne fait que le relayer
-    // chiffré. Le média lui-même ne passe pas par là, il va en direct.
     Signal { key: [u8; 32], nonce: [u8; 24], body: Vec<u8> },
+    GroupMsg { key: [u8; 32], gid: String, nonce: [u8; 24], body: Vec<u8> },
+    GroupInvite { key: [u8; 32], nonce: [u8; 24], body: Vec<u8> },
+    GroupLeave { key: [u8; 32], gid: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct GroupMeta {
+    pub id: String,
+    pub name: String,
+    pub members: Vec<String>,
 }
 
 impl Wire {
-    /// Clé publique de l'expéditeur, présente dans chaque variante.
     pub(crate) fn sender_key(&self) -> [u8; 32] {
         match self {
             Wire::Hello { key, .. }
             | Wire::Msg { key, .. }
             | Wire::FileMeta { key, .. }
             | Wire::FileChunk { key, .. }
-            | Wire::Signal { key, .. } => *key,
+            | Wire::Signal { key, .. }
+            | Wire::GroupMsg { key, .. }
+            | Wire::GroupInvite { key, .. }
+            | Wire::GroupLeave { key, .. } => *key,
         }
     }
 }
@@ -75,23 +67,23 @@ struct Behaviour {
     rr: request_response::cbor::Behaviour<Wire, Ack>,
 }
 
-// --- Vues exposées au front -----------------------------------------------
-
 #[derive(Clone, Serialize)]
 pub struct Identity {
     pub peer_id: String,
+    pub key: String,
     pub name: String,
     pub fingerprint: String,
-    pub onion: String, // adresse .onion (vide tant que Tor n'a pas démarré)
+    pub onion: String,
 }
 
 #[derive(Clone, Serialize)]
 pub struct PeerView {
     pub peer_id: String,
+    pub key: Option<String>,
     pub name: Option<String>,
     pub fingerprint: Option<String>,
     pub online: bool,
-    pub transport: String, // "lan" (libp2p) ou "tor"
+    pub transport: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -125,7 +117,28 @@ pub struct SignalMsg {
     pub data: String,
 }
 
-// --- État partagé entre les commandes Tauri et l'acteur réseau -------------
+#[derive(Clone, Serialize)]
+pub struct GroupMessage {
+    pub gid: String,
+    pub peer_id: String,
+    pub name: Option<String>,
+    pub text: String,
+    pub ts: u64,
+}
+
+#[derive(Clone, Serialize)]
+pub struct GroupInviteEvent {
+    pub gid: String,
+    pub name: String,
+    pub members: Vec<String>,
+    pub from: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct GroupLeaveEvent {
+    pub gid: String,
+    pub peer_id: String,
+}
 
 struct PeerRecord {
     name: Option<String>,
@@ -142,9 +155,6 @@ impl PeerRecord {
 pub struct Shared {
     pub me: Mutex<Identity>,
     peers: Mutex<HashMap<PeerId, PeerRecord>>,
-    // Pairs joints via Tor : on ne connaît pas leur PeerId libp2p, on les
-    // indexe par leur clé publique X25519 (en hexa). Registre séparé pour ne
-    // rien changer au chemin LAN qui fonctionne.
     tor: Mutex<HashMap<String, PeerRecord>>,
     data_dir: PathBuf,
 }
@@ -158,8 +168,6 @@ impl Shared {
             data_dir,
         }
     }
-
-    // --- pairs Tor (indexés par hex de la clé X25519) ---
 
     pub(crate) fn tor_set_key_name(&self, id: String, key: [u8; 32], name: String) {
         let mut m = self.tor.lock().unwrap();
@@ -195,7 +203,6 @@ impl Shared {
         self.tor.lock().unwrap().contains_key(id)
     }
 
-    /// On garde le pseudo choisi entre deux lancements.
     pub fn save_name(&self, name: &str) {
         let _ = fs::write(self.data_dir.join("name.txt"), name);
     }
@@ -227,6 +234,13 @@ impl Shared {
         self.peers.lock().unwrap().get(p).and_then(|r| r.key.clone())
     }
 
+    pub fn lan_peer_by_key(&self, key_hex: &str) -> Option<PeerId> {
+        self.peers.lock().unwrap().iter().find_map(|(p, r)| match &r.key {
+            Some(k) if crypto::hex(k.as_bytes()) == key_hex => Some(*p),
+            _ => None,
+        })
+    }
+
     fn peer_name(&self, p: &PeerId) -> Option<String> {
         self.peers.lock().unwrap().get(p).and_then(|r| r.name.clone())
     }
@@ -239,6 +253,7 @@ impl Shared {
             .iter()
             .map(|(p, r)| PeerView {
                 peer_id: p.to_string(),
+                key: r.key.as_ref().map(|k| crypto::hex(k.as_bytes())),
                 name: r.name.clone(),
                 fingerprint: r.key.as_ref().map(|k| crypto::fingerprint(k.as_bytes())),
                 online: r.online,
@@ -246,36 +261,30 @@ impl Shared {
             })
             .collect();
 
-        // fusionne les pairs Tor
         out.extend(self.tor.lock().unwrap().iter().map(|(id, r)| PeerView {
             peer_id: id.clone(),
+            key: r.key.as_ref().map(|k| crypto::hex(k.as_bytes())),
             name: r.name.clone(),
             fingerprint: r.key.as_ref().map(|k| crypto::fingerprint(k.as_bytes())),
             online: r.online,
             transport: "tor".to_string(),
         }));
 
-        // les pairs en ligne d'abord, puis ordre stable par id
         out.sort_by(|a, b| b.online.cmp(&a.online).then(a.peer_id.cmp(&b.peer_id)));
         out
     }
 }
 
-// --- Commandes envoyées à l'acteur ----------------------------------------
-
 pub enum Command {
     Send { peer: PeerId, text: String, reply: oneshot::Sender<Result<(), String>> },
     SendFile { peer: PeerId, path: PathBuf, reply: oneshot::Sender<Result<FileSent, String>> },
-    Signal { peer: PeerId, data: String }, // signalisation WebRTC, on l'envoie sans attendre
-    Broadcast(String), // diffuser un changement de nom aux pairs connectés
+    Signal { peer: PeerId, data: String },
+    Broadcast(String),
+    GroupMsg { peer: PeerId, gid: String, text: String },
+    GroupInvite { peer: PeerId, gid: String, name: String, members: Vec<String> },
+    GroupLeave { peer: PeerId, gid: String },
 }
 
-// --- Réassemblage d'un fichier en cours de réception ----------------------
-
-/// Streams an incoming file straight to disk instead of buffering every chunk
-/// in memory, so transfers are bounded by disk, not RAM (sending large
-/// archives like .zip/.rar no longer risks running the app out of memory).
-/// Shared by both transports (libp2p and Tor).
 pub(crate) struct FileWriter {
     file: fs::File,
     temp_path: PathBuf,
@@ -286,7 +295,6 @@ pub(crate) struct FileWriter {
 }
 
 impl FileWriter {
-    /// Open a hidden `.part` file in `download_dir` for the transfer `id`.
     pub(crate) fn open(download_dir: &Path, id: u64) -> std::io::Result<Self> {
         fs::create_dir_all(download_dir)?;
         let temp_path = download_dir.join(format!(".nyx-{id}.part"));
@@ -305,9 +313,13 @@ impl FileWriter {
         self.total = Some(total);
     }
 
-    /// Write one decrypted chunk at its position. Duplicates are ignored.
     pub(crate) fn write_chunk(&mut self, seq: u32, data: &[u8]) {
         use std::io::{Seek, SeekFrom, Write};
+        if let Some(total) = self.total {
+            if seq >= total {
+                return;
+            }
+        }
         if self.seen.contains(&seq) {
             return;
         }
@@ -321,8 +333,6 @@ impl FileWriter {
         self.total.map_or(false, |t| self.seen.len() as u32 == t)
     }
 
-    /// Flush, close and move the `.part` file to a final unique path in
-    /// `download_dir`. Returns the destination path, size and file name.
     pub(crate) fn finalize(mut self, download_dir: &Path, id: u64) -> std::io::Result<(PathBuf, u64, String)> {
         use std::io::Write;
         let _ = self.file.flush();
@@ -334,9 +344,6 @@ impl FileWriter {
     }
 }
 
-// --- Persistance de l'identité --------------------------------------------
-
-/// Pseudo sauvegardé, sinon le nom de session de l'OS, sinon "Anonyme".
 pub fn load_name(dir: &Path) -> String {
     if let Ok(n) = fs::read_to_string(dir.join("name.txt")) {
         let n = n.trim();
@@ -349,9 +356,6 @@ pub fn load_name(dir: &Path) -> String {
         .unwrap_or_else(|_| "Anonyme".to_string())
 }
 
-/// Charge l'identité depuis le disque, ou la crée au premier lancement. On veut
-/// une identité stable : c'est ce qui donne une empreinte constante d'une
-/// session à l'autre.
 pub fn load_or_create_identity(dir: &Path) -> (Keypair, SecretKey) {
     let id_path = dir.join("identity.key");
     let e2e_path = dir.join("e2e.key");
@@ -383,8 +387,6 @@ pub fn load_or_create_identity(dir: &Path) -> (Keypair, SecretKey) {
     (keypair, secret)
 }
 
-// --- Boucle réseau ---------------------------------------------------------
-
 pub async fn run(
     id_keys: Keypair,
     secret: SecretKey,
@@ -395,6 +397,8 @@ pub async fn run(
 ) {
     let local = id_keys.public().to_peer_id();
     let my_pub: [u8; 32] = *secret.public_key().as_bytes();
+
+    cleanup_partials(&download_dir);
 
     let mut swarm = match build_swarm(id_keys) {
         Ok(s) => s,
@@ -423,7 +427,7 @@ pub async fn run(
         tokio::select! {
             cmd = cmd_rx.recv() => match cmd {
                 Some(c) => ctx.handle_command(&mut swarm, c),
-                None => break, // l'app se ferme
+                None => break,
             },
             event = swarm.select_next_some() => ctx.handle_event(&mut swarm, event),
         }
@@ -442,15 +446,11 @@ fn build_swarm(id_keys: Keypair) -> Result<Swarm<Behaviour>, Box<dyn std::error:
             );
             Ok(Behaviour { mdns, rr })
         })?
-        // Connexions gardées ouvertes longtemps : une conversation peut rester
-        // silencieuse un moment sans qu'on veuille se déconnecter.
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(3600)))
         .build();
     Ok(swarm)
 }
 
-/// Tout l'état mutable de l'acteur. Le `Swarm` reste à part (passé en argument)
-/// pour ne pas se battre avec l'emprunt de `select!`.
 struct Ctx {
     shared: Arc<Shared>,
     app: AppHandle,
@@ -496,6 +496,25 @@ impl Ctx {
                     swarm.behaviour_mut().rr.send_request(&p, Wire::Hello { key: self.my_pub, name: name.clone() });
                 }
             }
+            Command::GroupMsg { peer, gid, text } => {
+                if let Some(pk) = self.shared.peer_key(&peer) {
+                    let (body, nonce) = crypto::seal(&self.secret, &pk, text.as_bytes());
+                    swarm.behaviour_mut().rr.send_request(&peer, Wire::GroupMsg { key: self.my_pub, gid, nonce, body });
+                }
+            }
+            Command::GroupInvite { peer, gid, name, members } => {
+                if let Some(pk) = self.shared.peer_key(&peer) {
+                    let meta = GroupMeta { id: gid, name, members };
+                    let mut buf = Vec::new();
+                    if ciborium::into_writer(&meta, &mut buf).is_ok() {
+                        let (body, nonce) = crypto::seal(&self.secret, &pk, &buf);
+                        swarm.behaviour_mut().rr.send_request(&peer, Wire::GroupInvite { key: self.my_pub, nonce, body });
+                    }
+                }
+            }
+            Command::GroupLeave { peer, gid } => {
+                swarm.behaviour_mut().rr.send_request(&peer, Wire::GroupLeave { key: self.my_pub, gid });
+            }
         }
     }
 
@@ -506,8 +525,6 @@ impl Ctx {
             .and_then(|n| n.to_str())
             .unwrap_or("fichier")
             .to_string();
-        // Read the file chunk by chunk from disk rather than loading it whole,
-        // so even very large archives don't have to fit in memory.
         let size = fs::metadata(path).map_err(|e| format!("lecture impossible : {e}"))?.len();
         let chunks = ((size + FILE_CHUNK as u64 - 1) / FILE_CHUNK as u64) as u32;
         let id = OsRng.next_u64();
@@ -560,8 +577,6 @@ impl Ctx {
             }
 
             SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-                // L'expiration mDNS ne veut pas dire que le lien est mort : on ne
-                // marque hors ligne que si on n'a plus de connexion vivante.
                 for (peer, _addr) in list {
                     if !swarm.is_connected(&peer) {
                         self.shared.set_online(&peer, false);
@@ -643,7 +658,7 @@ impl Ctx {
                     }
                 }
                 let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
-                self.try_finalize(id, peer); // cas fichier vide (0 morceau)
+                self.try_finalize(id, peer);
             }
 
             Wire::FileChunk { key, id, seq, nonce, body } => {
@@ -672,13 +687,41 @@ impl Ctx {
                 }
                 let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
             }
+
+            Wire::GroupMsg { key, gid, nonce, body } => {
+                self.shared.set_key(peer, key);
+                if let Some(pt) = crypto::open(&self.secret, &PublicKey::from(key), &nonce, &body) {
+                    if let Ok(text) = String::from_utf8(pt) {
+                        let _ = self.app.emit(
+                            "group_message",
+                            GroupMessage { gid, peer_id: crypto::hex(&key), name: self.shared.peer_name(&peer), text, ts: now_ms() },
+                        );
+                    }
+                }
+                let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
+            }
+
+            Wire::GroupInvite { key, nonce, body } => {
+                self.shared.set_key(peer, key);
+                if let Some(pt) = crypto::open(&self.secret, &PublicKey::from(key), &nonce, &body) {
+                    if let Ok(meta) = ciborium::from_reader::<GroupMeta, _>(&pt[..]) {
+                        let _ = self.app.emit(
+                            "group_invite",
+                            GroupInviteEvent { gid: meta.id, name: meta.name, members: meta.members, from: peer.to_string() },
+                        );
+                    }
+                }
+                let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
+            }
+
+            Wire::GroupLeave { key, gid } => {
+                self.shared.set_key(peer, key);
+                let _ = self.app.emit("group_leave", GroupLeaveEvent { gid, peer_id: crypto::hex(&key) });
+                let _ = swarm.behaviour_mut().rr.send_response(channel, Ack::Ok);
+            }
         }
     }
 
-    /// Si tous les morceaux sont là, on recolle, on écrit dans Téléchargements
-    /// et on prévient le front.
-    /// Make sure a `FileWriter` exists for this transfer; returns false if the
-    /// destination file could not be opened.
     fn ensure_writer(&mut self, id: u64) -> bool {
         if self.incoming.contains_key(&id) {
             return true;
@@ -720,8 +763,6 @@ impl Ctx {
     }
 }
 
-/// Read up to `buf.len()` bytes, looping over short reads. Returns the number
-/// of bytes read (0 at end of file).
 fn read_chunk(file: &mut fs::File, buf: &mut [u8]) -> std::io::Result<usize> {
     use std::io::Read;
     let mut filled = 0;
@@ -735,8 +776,12 @@ fn read_chunk(file: &mut fs::File, buf: &mut [u8]) -> std::io::Result<usize> {
     Ok(filled)
 }
 
-/// Évite d'écraser un fichier existant : `photo.png` → `photo (1).png`, etc.
 pub(crate) fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    let name = Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty() && *n != "." && *n != "..")
+        .unwrap_or("fichier");
     let first = dir.join(name);
     if !first.exists() {
         return first;
@@ -762,4 +807,19 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+pub(crate) fn cleanup_partials(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            let orphan = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map_or(false, |n| n.starts_with(".nyx-") && n.ends_with(".part"));
+            if orphan {
+                let _ = fs::remove_file(p);
+            }
+        }
+    }
 }

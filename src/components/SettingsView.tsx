@@ -1,31 +1,64 @@
 import { useState } from "react";
 import type { Accent, Identity } from "../types";
-import type { Theme } from "../theme";
-import { ACCENTS } from "../theme";
+import type { Skin, Theme } from "../theme";
+import { ACCENTS, SKINS } from "../theme";
 import { loadTurn, saveTurn } from "../calls";
 import { loadDevices, saveDevices, useMediaDevices, outputSelectable } from "../devices";
 import { soundsEnabled, setSounds } from "../sound";
-import { Check } from "../icons";
+import { Check, Lock, LogOut, ShieldCheck } from "../icons";
+import { exportIdentity, importIdentity, pickFile, pickSave } from "../api";
 import { useTranslation, LANGS, type Lang } from "../i18n";
 
 interface Props {
   me: Identity | null;
   accent: Accent;
   theme: Theme;
+  skin: Skin;
   keepHistory: boolean;
   onRename: (name: string) => void;
   onAccent: (a: Accent) => void;
   onTheme: (t: Theme) => void;
+  onSkin: (s: Skin) => void;
   onKeepHistory: (v: boolean) => void;
+  onClearHistory: () => void;
 }
 
-export default function SettingsView({ me, accent, theme, keepHistory, onRename, onAccent, onTheme, onKeepHistory }: Props) {
+export default function SettingsView({ me, accent, theme, skin, keepHistory, onRename, onAccent, onTheme, onSkin, onKeepHistory, onClearHistory }: Props) {
   const [name, setName] = useState(me?.name ?? "");
   const [turn, setTurn] = useState(loadTurn);
   const [devicePrefs, setDevicePrefs] = useState(loadDevices);
   const [sounds, setSoundsOn] = useState(soundsEnabled);
+  const [status, setStatus] = useState<string | null>(null);
   const { devices, hasLabels, requestAccess } = useMediaDevices();
   const { lang, setLanguage, t } = useTranslation();
+
+  async function doExport() {
+    try {
+      const dest = await pickSave("nyxchat-identity.nyx");
+      if (!dest) return;
+      await exportIdentity(dest);
+      setStatus(t("settings.exported"));
+    } catch (e) {
+      setStatus(t("settings.backupError") + e);
+    }
+  }
+
+  async function doImport() {
+    try {
+      const src = await pickFile();
+      if (!src) return;
+      if (!window.confirm(t("settings.importConfirm"))) return;
+      await importIdentity(src);
+      setStatus(t("settings.imported"));
+    } catch (e) {
+      setStatus(t("settings.backupError") + e);
+    }
+  }
+
+  function doClear() {
+    onClearHistory();
+    setStatus(t("settings.cleared"));
+  }
 
   function updateTurn(patch: Partial<typeof turn>) {
     setTurn((prev) => {
@@ -66,6 +99,25 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
             <option key={l.code} value={l.code}>{l.label}</option>
           ))}
         </select>
+      </div>
+
+      <div className="field">
+        <label>{t("settings.style")}</label>
+        <div className="skin-grid">
+          {SKINS.map((s) => (
+            <button key={s.id} className={"skin-card" + (skin === s.id ? " sel" : "")} onClick={() => onSkin(s.id)}>
+              <span className="skin-prev" style={{ background: s.bg }}>
+                <span className="skin-prev-bar" style={{ background: s.panel }} />
+                <span className="skin-prev-bubble" style={{ background: s.accent }} />
+              </span>
+              <span className="skin-meta">
+                <span className="skin-name">{s.label}</span>
+                <span className="skin-hint">{s.hint}</span>
+              </span>
+              {skin === s.id && <Check size={15} className="skin-check" />}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="field">
@@ -181,6 +233,23 @@ export default function SettingsView({ me, accent, theme, keepHistory, onRename,
           <br />
           {t("settings.torAddress")} <code>{me?.onion || t("settings.publishing")}</code>
         </div>
+      </div>
+
+      <div className="field">
+        <label>{t("settings.security")}</label>
+        <p className="hint" style={{ margin: "0 0 12px" }}>{t("settings.backupHint")}</p>
+        <div className="backup-actions">
+          <button className="btn" onClick={doExport}>
+            <ShieldCheck size={15} /> {t("settings.exportId")}
+          </button>
+          <button className="btn" onClick={doImport}>
+            <Lock size={15} /> {t("settings.importId")}
+          </button>
+          <button className="btn danger" onClick={doClear}>
+            <LogOut size={15} /> {t("settings.clearHistory")}
+          </button>
+        </div>
+        {status && <p className="hint" style={{ marginTop: 10, color: "var(--accent)" }}>{status}</p>}
       </div>
 
       <div className="about">
